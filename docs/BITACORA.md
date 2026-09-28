@@ -1294,3 +1294,92 @@ los tres OK. Opus `high` y Sonnet `max` también responden. El error provocado (
 **Qué aprendiste: no tragarse las causas.** Envolver un error en otro más genérico ("completion failed") está bien
 para clasificarlo, pero quien lo reporta debe recorrer la cadena (`error.cause`) y mostrarla: sin eso, un fallo
 pasajero parece un error de configuración y no hay forma de distinguirlos.
+
+## 2026-09-28 — Kokoro se descarga solo en un equipo nuevo (verificado por SHA-256)
+
+**Qué se hizo**
+- Al revisar si el repositorio basta para levantar el servidor en Windows apareció un hueco: Kokoro se había
+  sacado a mano durante la prueba de voces y ningún script lo repetía. En un clon limpio, `voz` arrancaba sin voz.
+- Ahora `voz`, al cargar Kokoro, llama a `asegurar_kokoro()`: si faltan, descarga `kokoro-v1.0.fp16.onnx` y
+  `voices-v1.0.bin` de las publicaciones de kokoro-onnx, comprueba la huella SHA-256 de cada uno, guarda solo
+  `jf_tebukuro` en `voces_jf_tebukuro.npz` y borra el paquete de 54 voces.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `voz/servidor.py` | `HUELLAS`, `descargar_verificado()` (temporal, SHA-256, escritura atómica) y `asegurar_kokoro()` |
+| `voz/tests/test_servidor.py` | 3 pruebas sin red con URLs `file://`: descarga y extracción, huella distinta, archivo sin huella |
+| `voz/Dockerfile`, `GUIA.md`, `README.md` | Explican que Whisper y Kokoro se descargan solos la primera vez |
+
+**Decisiones y por qué**
+- **En `voz` y no en `hub modelos`:** igual que Whisper, sin pasos manuales. Si falla la descarga, la
+  transcripción sigue funcionando y el bot responde con texto (ya estaba así).
+- **Huellas fijas en el código:** lo que baja de internet no se carga si no es exactamente el archivo verificado
+  (protege de descargas cortadas o archivos alterados). Un archivo sin huella conocida no se descarga: se pide
+  colocarlo a mano.
+- **Biblioteca estándar (`urllib`, `hashlib`)**: sin dependencias nuevas.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| ¿La voz extraída es la misma que la elegida? | Comparada con `np.array_equal` contra la actual: idéntica (510×1×256, float32) |
+| `grep` del sistema es `ugrep` y no aceptó algunas expresiones al revisar secretos | Escaneo con un script de Python |
+
+**Resultado:** 12 pruebas de `voz` pasan. Prueba real en una carpeta vacía: descarga en 40 s, huella del modelo
+igual a la local, voz de 522.516 bytes (igual que la actual) y Kokoro habló con esos archivos. `voz` reconstruido.
+
+**Cómo probarlo:** en un equipo sin `modelos/kokoro/`, `./hub.sh arrancar` y `docker compose logs voz`:
+"Descargando kokoro-v1.0.fp16.onnx…", "Voz jf_tebukuro guardada…", "Kokoro cargado…".
+
+**Qué aprendiste: descargas reproducibles y verificadas.** Un archivo que "ya estaba en la carpeta" es una
+dependencia invisible: funciona en tu equipo y falla en el siguiente. Automatizar su descarga con una huella
+SHA-256 fija lo hace reproducible y seguro: se sabe exactamente qué archivo se usa y se rechaza cualquier otro.
+
+## 2026-09-28 — `core` corre con el usuario del equipo (bóveda editable desde Obsidian y Syncthing)
+
+**Qué se hizo**
+- Antes de instalar Syncthing apareció un problema: toda la bóveda era de root (`core` corría como root; carpetas
+  755, archivos 644). El usuario podía leerla pero no escribirla: Obsidian en la PC no podría editar las notas del
+  bot y Syncthing (que corre como el usuario) fallaría al recibir cambios del móvil, la tablet o la laptop.
+- Con el visto bueno del usuario, `core` corre ahora con su UID/GID. Se devolvieron los dueños de la bóveda,
+  `datos/` y `modelos/hf` (en la bóveda eran 30 de 31 elementos; ahora ninguno es de root) y se verificó todo con el stack real.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `docker-compose.yml` | `user: "${HUB_UID:-1000}:${HUB_GID:-1000}"` y `HOME: /tmp` en `core` |
+| `hub.sh` | Exporta `HUB_UID`/`HUB_GID` desde `id -u`/`id -g`; nuevo `permisos` (chown con Docker, sin `sudo`); `tests` sin caché de pytest |
+| `hub.ps1` | `tests` sin caché de pytest (`/app` no es escribible) |
+| `core/app/router/clasificador.py` | Entrena en una carpeta temporal dentro de `datos/router` y con `save_strategy="no"` |
+| `.env.example` | `HUB_UID`/`HUB_GID` comentados, solo para quien use `docker compose` directo |
+| `CLAUDE.md` | La decisión "contenedores como root" pasa a "core con el usuario del equipo" |
+
+**Decisiones y por qué**
+- **Solo `core`**: es el único que escribe en la bóveda y en `datos/`. `voz` y `ollama` escriben solo en sus
+  carpetas de `modelos/`, que nadie edita a mano.
+- **`HUB_UID` y no `UID`**: `$UID` es una variable de bash que no se exporta, así que Docker Compose no la ve.
+  `hub.sh` la exporta; sin `hub.sh` se usa 1000, que es el primer usuario en Ubuntu. En Windows da igual: Docker
+  Desktop no aplica dueños en las carpetas montadas.
+- **`HOME=/tmp`**: el usuario 1000 no existe en la imagen; sin HOME, las librerías intentarían escribir en `/`.
+- **`permisos` con Docker y no con `sudo`**: el grupo `docker` ya tiene ese poder; así no hace falta la clave.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| SetFit guarda checkpoints en `./checkpoints` (así apareció `core/checkpoints`, 1,4 GB) y `/app` ya no es escribible | `output_dir` temporal en `datos/router` + `save_strategy="no"`; se borra al terminar |
+| pytest intenta crear `.pytest_cache` en `/app` | `-p no:cacheprovider` en `hub tests` |
+
+**Resultado:** `core` corre como `uid=1000`. El latido, la base SQLite y el modelo reentrenado quedan a nombre del
+usuario; 0 archivos de root en la bóveda, `datos/` y `modelos/hf`. 247 pruebas pasan (en `.venv` y en el
+contenedor), chequeo "listo" y entrenamiento real en 197 s con 132 ejemplos.
+
+**Cómo probarlo:** `ls -la ~/Boveda/_hub/servidor.json` (dueño: tu usuario); editar una nota del bot en Obsidian.
+
+**Qué aprendiste: dueños de archivos y contenedores.** Un contenedor escribe en una carpeta montada con el UID
+con el que corre, no con "el usuario de Docker". Si corre como root, todo lo que crea es de root en el equipo.
+Fijar `user:` al UID del equipo hace que los archivos sean tuyos, siempre que el contenedor no necesite escribir
+fuera de las carpetas montadas (de ahí `HOME=/tmp` y quitar los checkpoints de `/app`).

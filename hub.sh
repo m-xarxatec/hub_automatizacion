@@ -4,6 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 GPU=(-f docker-compose.yml -f docker-compose.gpu.yml)
+# core corre con tu usuario: lo que escribe en la bóveda es tuyo (Obsidian y Syncthing pueden editarlo).
+export HUB_UID="${HUB_UID:-$(id -u)}" HUB_GID="${HUB_GID:-$(id -g)}"
 
 case "${1:-ayuda}" in
   arrancar)     docker compose "${GPU[@]}" up -d --build ;;
@@ -14,11 +16,14 @@ case "${1:-ayuda}" in
   estado)       docker compose ps ;;
   chequeo)      docker compose run --rm --no-deps core python -m scripts.chequeo ;;
   modelos)      docker compose run --rm --no-deps core python -m scripts.descargar_modelos ;;
-  tests)        docker compose run --rm --no-deps core python -m pytest -q ;;
+  tests)        docker compose run --rm --no-deps core python -m pytest -q -p no:cacheprovider ;;
   entrenar)     docker compose run --rm --no-deps core python -m scripts.entrenar_router ;;
   token)        docker compose run --rm --no-deps core python -m scripts.generar_token ;;
   gpu)          docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi ;;
   actualizar)   git pull && docker compose "${GPU[@]}" up -d --build ;;
+  permisos)     # Una vez: devuelve a tu usuario lo que core escribió como root (versiones anteriores).
+                docker compose run --rm --no-deps --user root core \
+                  chown -R "$HUB_UID:$HUB_GID" /boveda /datos /modelos/hf ;;
   *)
     cat <<'TXT'
 Uso: ./hub.sh <accion>
@@ -35,6 +40,7 @@ Uso: ./hub.sh <accion>
   token         genera un token aleatorio para .env
   gpu           comprueba que Docker ve la GPU NVIDIA
   actualizar    git pull y reconstruir
+  permisos      devuelve a tu usuario la bóveda, datos/ y modelos/hf (una vez, con el stack parado)
 TXT
     ;;
 esac

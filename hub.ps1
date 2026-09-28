@@ -15,7 +15,7 @@ switch ($accion) {
     "estado"       { docker compose ps }
     "chequeo"      { docker compose run --rm --no-deps core python -m scripts.chequeo }
     "modelos"      { docker compose run --rm --no-deps core python -m scripts.descargar_modelos }
-    "tests"        { docker compose run --rm --no-deps core python -m pytest -q }
+    "tests"        { docker compose run --rm --no-deps core python -m pytest -q -p no:cacheprovider }
     "entrenar"     { docker compose run --rm --no-deps core python -m scripts.entrenar_router }
     "token"        { docker compose run --rm --no-deps core python -m scripts.generar_token }
     "gpu"          { docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi }

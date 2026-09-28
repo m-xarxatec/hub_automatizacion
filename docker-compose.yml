@@ -9,8 +9,15 @@ services:
   core:
     build: ./core
     env_file: .env
+    # Con el usuario del equipo (no root): lo que escribe en la bóveda y en datos/ es suyo, así
+    # Obsidian y Syncthing pueden editarlo y recibir cambios del móvil, la tablet o la laptop.
+    # hub.sh toma HUB_UID/HUB_GID de `id -u`/`id -g`; en Windows da igual (Docker Desktop no
+    # aplica dueños en las carpetas montadas).
+    user: "${HUB_UID:-1000}:${HUB_GID:-1000}"
     environment:
       TZ: ${TZ:-Europe/Madrid}
+      # Ese usuario no existe en la imagen: sin HOME propio, las librerías usarían "/".
+      HOME: /tmp
       BOVEDA_DIR: /boveda
       DATOS_DIR: /datos
       CONFIG_PATH: /app/config.yaml

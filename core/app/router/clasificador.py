@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+import tempfile
 import time
 from pathlib import Path
 
@@ -73,9 +74,16 @@ def entrenar(textos: list[str], etiquetas: list[str], destino: Path, *,
     inicio = time.time()
     modelo = SetFitModel.from_pretrained(base, labels=sorted(set(etiquetas)))
     datos = Dataset.from_dict({"text": textos, "label": etiquetas})
-    args = TrainingArguments(batch_size=16, num_epochs=1, num_iterations=iteraciones,
-                             report_to="none", show_progress_bar=False)
-    Trainer(model=modelo, args=args, train_dataset=datos).train()
+    # Sin checkpoints (por defecto SetFit guarda GB en ./checkpoints, y /app no es escribible
+    # porque core corre con el usuario del equipo): solo una carpeta de trabajo temporal.
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    trabajo = Path(tempfile.mkdtemp(prefix=".entrenando-", dir=destino.parent))
+    try:
+        args = TrainingArguments(output_dir=str(trabajo), save_strategy="no", batch_size=16, num_epochs=1,
+                                 num_iterations=iteraciones, report_to="none", show_progress_bar=False)
+        Trainer(model=modelo, args=args, train_dataset=datos).train()
+    finally:
+        shutil.rmtree(trabajo, ignore_errors=True)
 
     nuevo = destino.parent / f".{destino.name}.nuevo"
     viejo = destino.parent / f".{destino.name}.viejo"
