@@ -1,0 +1,133 @@
+# Frases de entrenamiento del clasificador local (día 3).
+# Objetivo: 20 a 30 ejemplos por acción, escritos como hablan ustedes.
+# Las correcciones hechas con los botones del bot se guardan aparte, en
+# datos/router/correcciones.yaml, y se suman a estas al hacer /reentrenar.
+# "referencia" y "referencia_personaje" no van aquí: solo aplican a imágenes
+# con pie de foto y las resuelven las reglas.
+
+nota:
+  - se me ocurrió que la villana tenga una máscara de zorro
+  - el capítulo 4 debería empezar de noche
+  - Zamael no confía en nadie desde lo del templo
+  - idea para portada con lluvia y neón
+  - la ciudad tiene un mercado flotante sobre el río
+  - Kira habla siempre en voz baja cuando miente
+  - y si el templo fuera en realidad una nave enterrada
+  - el arco del torneo termina con una derrota
+  - la paleta del flashback va en sepia y azul
+  - diálogo de Leo, nadie sale de aquí sin pagar
+  - el protagonista perdió a su hermana en el incendio
+  - la villana colecciona máscaras de sus víctimas
+  - me gusta que las viñetas de acción sean diagonales
+  - escena del puente, llueve y se oyen campanas
+  - Zamael le dice a Kira que nunca volverá al clan
+  - los espíritus del bosque solo aparecen al amanecer
+  - el logo del webtoon podría llevar una luna rota
+  - capítulo 6 empieza con un sueño de Kira
+  - el mentor esconde una cicatriz en la espalda
+  - apuntar que la moneda del reino se llama sol
+tarea:
+  - tengo que terminar el storyboard del capítulo 3
+  - pendiente revisar los diálogos de la escena del puente
+  - recuérdame exportar las páginas en alta
+  - hay que entintar las páginas 12 a 15
+  - me falta colorear la portada del capítulo 2
+  - subir el capítulo 5 el viernes
+  - no olvidar mandar las páginas al editor
+  - revisar la ortografía de los globos del capítulo 4
+  - comprar tinta y papel de acuarela
+  - para mañana, limpiar los bocetos de Zamael
+  - antes del lunes tengo que publicar el teaser
+  - falta hacer el layout de la escena del templo
+  - toca responder los comentarios de los lectores
+  - acordarme de renombrar los archivos de las viñetas
+  - terminar el guion del capítulo 7 esta semana
+  - hacer el diseño de vestuario de Kira
+  - organizar la carpeta de referencias del arco 2
+  - rehacer la página 9, los fondos quedaron mal
+  - agendar la sesión de dibujo del sábado
+  - preparar el calendario de publicación del mes
+imagen:
+  - genera una imagen de Zamael bajo la lluvia
+  - hazme un boceto de la ciudad abandonada
+  - quiero una ilustración del templo en ruinas
+  - dibújame a Kira con armadura de invierno
+  - crea un fondo de bosque con niebla al amanecer
+  - necesito una imagen del mercado flotante de noche
+  - haz un render de la espada de Leo
+  - generar concepto de la máscara de zorro de la villana
+  - muéstrame cómo se vería el castillo en estilo acuarela
+  - una ilustración del dragón sobre la ciudad en llamas
+  - hazme una portada de prueba con la luna rota
+  - quiero ver a Zamael de niño en estilo anime
+  - crea un paisaje de montañas nevadas con templos
+  - genera varias poses de Kira corriendo
+  - imagen de referencia de una calle japonesa con neón
+  - bocetea el interior de la taberna
+  - diseña un monstruo del bosque con ojos brillantes
+  - hazme un mood visual del capítulo 6
+  - ilustra la escena del puente con lluvia
+  - quiero un concepto del traje del mentor
+consulta:
+  - qué significa kitsune en el folclore japonés
+  - cómo se escribe un buen cliffhanger
+  - cuántas viñetas suele tener un capítulo de webtoon
+  - qué resolución piden las plataformas de webtoon
+  - cómo se dibujan manos en perspectiva
+  - cuál es la diferencia entre guion literario y técnico
+  - por qué los webtoons usan scroll vertical
+  - quién creó Solo Leveling
+  - qué pinceles de Clip Studio sirven para entintar
+  - cómo hago para que un villano sea creíble
+  - explícame la regla de los tercios
+  - qué es un plano holandés
+  - dame consejos para escribir diálogos naturales
+  - qué tamaño de letra se usa en los globos
+  - cómo se organiza un arco argumental largo
+  - qué colores transmiten tristeza
+  - en qué época se usaban las katanas
+  - cómo funciona el ritmo de lectura en el scroll
+  - recomiéndame un formato para exportar las páginas
+  - qué es el viaje del héroe
+analisis:
+  - es viable que la villana sea la hermana del protagonista
+  - encaja que Zamael traicione al grupo en el capítulo 5
+  - analiza si el ritmo del arco 2 es muy lento
+  - tiene sentido que Kira pierda sus poderes tan pronto
+  - revisa la coherencia de la línea temporal del templo
+  - crees que el giro del capítulo 8 es predecible
+  - evalúa si hay demasiados personajes en el arco del torneo
+  - qué tan coherente es el sistema de magia con lo que ya escribí
+  - compara los dos finales posibles del arco 1
+  - analiza la evolución de Zamael en los primeros capítulos
+  - sería creíble que el mentor sea el villano oculto
+  - revisa mis notas de historia y busca contradicciones
+  - estudia si la relación entre Kira y Leo avanza muy rápido
+  - funcionaría contar el capítulo 3 desde la villana
+  - dame un análisis del arco completo antes de seguir
+  - detecta huecos en la trama del reino
+  - valora si el prólogo engancha lo suficiente
+  - qué problemas ves en la estructura del capítulo 4
+  - es coherente que el dragón aparezca antes del torneo
+  - analiza si la villana tiene motivaciones claras
+busqueda:
+  - busca referencias de arquitectura brutalista
+  - encuentra ejemplos de armaduras samurái reales
+  - investiga cómo eran los mercados flotantes de Tailandia
+  - busca fotos de bosques con niebla
+  - encuéntrame webtoons de fantasía oscura parecidos
+  - investiga la mitología del zorro de nueve colas
+  - busca tutoriales de fondos en perspectiva
+  - encuentra paletas de color de estilo cyberpunk
+  - busca información sobre templos sintoístas
+  - investiga cómo se forjaban las espadas japonesas
+  - encuentra referencias de poses de combate con lanza
+  - busca artículos sobre narrativa visual en cómics
+  - investiga trajes tradicionales coreanos
+  - busca imágenes de ciudades en ruinas reales
+  - encuéntrame concursos de webtoon abiertos
+  - busca precios de tabletas de dibujo
+  - investiga qué plataformas pagan a autores de webtoon
+  - busca vestuario medieval femenino para referencia
+  - encuentra ejemplos de onomatopeyas en coreano
+  - investiga sobre castillos flotantes en la ficción

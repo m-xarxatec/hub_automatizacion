@@ -1,0 +1,19 @@
+aiogram>=3.13,<4
+fastapi>=0.115
+uvicorn>=0.30
+PyYAML>=6
+httpx>=0.27
+tzdata
+pytest>=8
+
+# Día 3 (router local). Versiones fijas: setfit se rompe con facilidad cuando
+# cambia transformers. torch NO va aquí: el Dockerfile instala la versión solo CPU
+# (unos 200 MB en vez de más de 2 GB con CUDA). Fuera de Docker, instalarlo antes con:
+#   pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
+setfit==1.2.0
+
+# Día 4: firma RSA de las peticiones a tensor.art
+cryptography==50.0.1
+sentence-transformers==6.1.0
+transformers==5.17.0
+datasets==5.0.1
