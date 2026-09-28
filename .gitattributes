@@ -1,0 +1,14 @@
+# Todo en LF para que los scripts funcionen dentro de contenedores Linux,
+# aunque se clone en Windows.
+* text=auto eol=lf
+
+# PowerShell en Windows se lleva mejor con CRLF
+*.ps1 text eol=crlf
+
+# Binarios
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gguf binary
+*.safetensors binary

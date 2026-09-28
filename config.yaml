@@ -1,0 +1,96 @@
+# Configuración funcional del hub. Las claves van en .env, nunca aquí.
+# Cambiar este archivo no requiere reconstruir: basta con
+#   docker compose restart core
+
+boveda:
+  bandeja: 00-Bandeja
+  diario: Diario
+  proyectos: Proyectos
+  interna: _hub
+  # Subcarpetas que se crean en cada proyecto nuevo
+  subcarpetas:
+    - Ideas
+    - Historia
+    - Historia/Personajes
+    - Produccion
+    - Imagenes
+    - Referencias
+    - Analisis
+  # Tipo de nota -> subcarpeta del proyecto
+  destino_por_tipo:
+    idea: Ideas
+    general: Ideas
+    historia: Historia
+    dialogo: Historia
+    produccion: Produccion
+    analisis: Analisis
+
+router:
+  motor: local            # local | jev (jev es opcional, fase 2)
+  umbral_ejecutar: 0.80   # >= ejecuta directo
+  umbral_confirmar: 0.50  # entre ambos: pide confirmación con botones
+  umbral_ia_ejecutar: 0.85  # si el clasificador duda y ChatGPT está así de seguro, se ejecuta directo
+  acciones: [nota, tarea, imagen, referencia, referencia_personaje, consulta, analisis, busqueda]
+  tipos_nota: [idea, historia, produccion, dialogo, general]
+  # Segunda opinión cuando el clasificador duda: ChatGPT → Haiku por OpenClaw; sin OpenClaw,
+  # el LLM local (Ollama) si proveedores.llm_local.activo.
+  segunda_opinion: true
+  llm_timeout_s: 15
+
+proveedores:
+  # Consulta y dudas del router, por OpenClaw (plugin hub-puente), en orden y con el menor
+  # razonamiento que acepta cada modelo (gpt-6-luna no admite "off"). "aislado": el modelo
+  # es un programa (Claude Code) y recibe un solo mensaje. Cada modelo nuevo debe estar
+  # también en openclaw/fragmento-config.json5 (allowedCompletionModels).
+  # Después del MVP: OpenRouter :free y qwen local como respaldo.
+  consulta:
+    - {modelo: openai/gpt-6-luna, razonamiento: low}
+    - {modelo: claude-cli/claude-haiku-4-5, razonamiento: "off", aislado: true}
+  llm_local:
+    # Apagado en el MVP: el router usa SetFit + reglas y las imágenes usan la idea tal cual.
+    # Vuelve (true) con las medidas ante fallos: segunda opinión, prompts y último respaldo.
+    activo: false
+    modelo: qwen2.5:3b-instruct-q4_K_M
+  analisis:               # decisión 4: siempre con confirmación por botones, nunca cambio automático
+    # Un botón por opción, en este orden. /modelo elige el predeterminado (va primero, con ✓).
+    # Después de elegir el modelo se elige el esfuerzo: "esfuerzos" son los niveles que acepta
+    # (verificados en OpenClaw el 2026-09-28; Opus no acepta "off"); el primero es el de por
+    # defecto (decisión 3). "extra_tokens": prompt propio que agrega Claude Code.
+    # Cada modelo debe estar también en openclaw/fragmento-config.json5 (allowedCompletionModels).
+    recomendado: claude-cli/claude-opus-5-5
+    opciones:
+      - {modelo: claude-cli/claude-opus-5-5, nombre: Opus 5.5, aislado: true, extra_tokens: 3700,
+         esfuerzos: [low, medium, high, xhigh, max]}
+      - {modelo: claude-cli/claude-sonnet-5, nombre: Sonnet 5, aislado: true, extra_tokens: 3700,
+         esfuerzos: ["off", low, medium, high, xhigh, max]}
+      - {modelo: openai/gpt-6-sol, nombre: GPT-6 Sol, esfuerzos: [low, medium, high, xhigh]}
+    tope_tokens_entrada: 20000      # notas que entran (estimado); el resto se deja fuera o se recorta
+    max_tokens_salida: 2500
+    tiempo_max_s: 300               # un análisis grande tarda más que una consulta
+    espera_confirmacion_min: 10     # los botones caducan
+  imagen:                 # se prueban en orden; si todos fallan: mensaje + /diagnostico
+    - {nombre: chatgpt, activo: true, modelo: gpt-image-2, calidad: low, tamano: 1024x1536}  # suscripción vía OpenClaw (~55 s)
+    # MVP: solo suscripciones pagas (OpenAI y Claude). Cloudflare y tensor.art se evalúan después del MVP.
+    - {nombre: cloudflare, activo: false, modelo: flux-1-schnell, pasos: 4}  # gratis a diario
+    - {nombre: tensorart, activo: false, modelo_id: "600423083519508503", pasos: 15,
+       ancho: 768, alto: 1024, sampler: "DPM++ 2M Karras"}                 # créditos de regalo
+
+voz:
+  # Pista de ortografía para Whisper. En español latinoamericano la z y la s suenan igual
+  # ("sorro" por "zorro"): las palabras de aquí se escriben bien al transcribir.
+  # Agrega nombres de personajes, lugares y términos del proyecto (máx. ~400 caracteres).
+  vocabulario: "Notas en español latinoamericano sobre un webtoon: zorro, villana, protagonista, hermana, storyboard, viñeta, entintado, boceto, capítulo, escena, Zamael. Crea una imagen en estilo anime de una elfa."
+
+cortacircuitos: {fallos: 3, espera_min: 5}
+
+limpieza:
+  hora: "04:00"                   # hora local de la limpieza diaria
+  audio_crudo: borrar_tras_transcribir
+  temp_dir_horas: 24              # datos/tmp
+  logs_dias: 14                   # datos/logs
+  imagenes_descartadas_dias: 7    # datos/descartadas
+  temporales_boveda_horas: 1      # restos .*.tmp de escrituras interrumpidas
+
+latido:
+  intervalo_s: 60
+  vigencia_s: 180

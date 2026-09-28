@@ -1,0 +1,82 @@
+# Hub creativo: bot de Telegram + Obsidian
+# Uso básico:   docker compose up -d
+# Con GPU:      docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# Servicios opcionales se activan con COMPOSE_PROFILES en .env (consulta, llm-local).
+
+name: hub-creativo
+
+services:
+  core:
+    build: ./core
+    env_file: .env
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      BOVEDA_DIR: /boveda
+      DATOS_DIR: /datos
+      CONFIG_PATH: /app/config.yaml
+      OLLAMA_URL: http://ollama:11434
+      OPENCLAW_URL: http://openclaw:18789
+      VOZ_URL: http://voz:8090
+      # Caché de Hugging Face (modelo base del router): sobrevive a las reconstrucciones.
+      HF_HOME: /modelos/hf
+    volumes:
+      - ${VAULT_PATH:?Define VAULT_PATH en .env}:/boveda
+      - ./datos:/datos
+      - ./config.yaml:/app/config.yaml:ro
+      - ./modelos/hf:/modelos/hf
+    ports:
+      # Solo red local: LAN_IP es la IP del equipo (Ubuntu) o 0.0.0.0 (Windows).
+      - "${LAN_IP:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+    depends_on:
+      - voz
+    restart: unless-stopped
+
+  ollama:
+    # Dormido en el MVP (llm_local.activo: false): solo arranca con COMPOSE_PROFILES=llm-local.
+    # qwen no debe competir por recursos con Whisper, Kokoro y el router (decisión 2).
+    image: ollama/ollama:latest
+    profiles: ["llm-local"]
+    environment:
+      # Keep_alive corto: carga el modelo, responde y lo descarga solo al rato.
+      OLLAMA_KEEP_ALIVE: "30s"
+    volumes:
+      - ./modelos/ollama:/root/.ollama
+    # Sin puertos publicados: solo lo usa core por la red interna.
+    restart: unless-stopped
+
+  openclaw:
+    # Día 5. Se activa con COMPOSE_PROFILES=consulta en .env
+    build: ./openclaw
+    profiles: ["consulta"]
+    # No se usa env_file a propósito: OpenClaw no debe ver TELEGRAM_TOKEN,
+    # porque el bot de Telegram lo maneja core (dos lectores = error 409).
+    environment:
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      TZ: ${TZ:-Europe/Madrid}
+      # Claude Code guarda ~/.claude.json fuera de ~/.claude: así todo queda en el volumen.
+      CLAUDE_CONFIG_DIR: /home/node/.claude
+    volumes:
+      - openclaw_estado:/home/node/.openclaw
+      - openclaw_claude:/home/node/.claude
+      # Plugin puente: core llama al modelo sin el prompt del agente (POST /hub/completar)
+      - ./openclaw/plugins/hub-puente:/home/node/hub-puente:ro
+    restart: unless-stopped
+
+  voz:
+    # Voz 100 % local (MVP): transcripción con faster-whisper; respuesta con Kokoro jf_tebukuro (paso C).
+    # Sin puertos publicados: solo lo usa core por la red interna.
+    build: ./voz
+    environment:
+      WHISPER_MODELO: ${WHISPER_MODELO:-small}
+      WHISPER_DEVICE: cpu
+      VOZ_MAX_SEGUNDOS: 120
+    volumes:
+      - ./modelos:/modelos
+    restart: unless-stopped
+
+volumes:
+  # Credenciales de OpenClaw, ChatGPT y Claude Code. Viven solo en este equipo:
+  # no se suben a GitHub ni se sincronizan con Syncthing.
+  openclaw_estado:
+  openclaw_claude:

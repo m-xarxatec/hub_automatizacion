@@ -1,0 +1,17 @@
+# Se suma al archivo principal en equipos con GPU NVIDIA:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# Ubuntu: requiere driver NVIDIA + NVIDIA Container Toolkit.
+# Windows: requiere driver NVIDIA + Docker Desktop con WSL2 (nada más).
+
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # voz corre en CPU: su imagen no trae las librerías de CUDA. Si al medir hace falta la GPU,
+  # se agrega aquí WHISPER_DEVICE: cuda y la reserva de GPU, y una imagen con CUDA.

@@ -1,0 +1,29 @@
+# Claves de cada equipo: nunca al repositorio
+.env
+.env.*
+!.env.example
+
+# Estado y modelos locales de cada equipo (no se suben ni se sincronizan)
+datos/*
+!datos/.gitkeep
+modelos/*
+!modelos/.gitkeep
+
+# Checkpoints de entrenamiento de SetFit (pesan GB; el modelo vive en datos/router/modelo)
+checkpoints/
+
+# Notas de trabajo locales de la sesión con Claude Code (detalles del entorno de cada equipo)
+CLAUDE.md
+docs/CHECKPOINT.md
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editores y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
