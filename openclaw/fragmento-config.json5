@@ -1,0 +1,60 @@
+// Ajustes del hub sobre la configuración que genera el onboarding (verificado con OpenClaw 2026.9.6).
+// Objetivo: OpenClaw con lo mínimo, solo lo que el hub usa (consulta, router si duda, imágenes).
+//
+// En 2026.9.6 "config patch" falla al validar referencias de modelo ("Cannot find package
+// 'openclaw'"), así que se aplica en dos partes (ver docs/CHECKPOINT.md y la bitácora):
+//   1) docker compose exec -T openclaw node dist/index.js config patch --stdin < openclaw/fragmento-config.json5
+//      (este archivo NO incluye agents.defaults.model)
+//   2) docker compose exec -T openclaw node dist/index.js models set openai/gpt-6-luna
+//      docker compose exec -T openclaw node dist/index.js models fallbacks add claude-cli/claude-haiku-4-5
+//
+// Medido con "Responde solo con la palabra: listo": 18.113 tokens de entrada por defecto ->
+// 6.738 con perfil minimal y plugins bloqueados -> 5.694 sin herramientas ni skills.
+// Aun así el agente es caro: core no lo usa. Llama al plugin hub-puente (POST /hub/completar),
+// que manda al modelo solo nuestro prompt: 134 tokens para una duda del router.
+{
+  gateway: {
+    http: {
+      endpoints: {
+        // Endpoint del agente compatible con OpenAI: core ya no lo usa (ver hub-puente)
+        chatCompletions: { enabled: false },
+      },
+    },
+  },
+  // Sin herramientas: el agente de consultas no necesita navegador, archivos ni shell.
+  // (Las imágenes necesitarán image_generate: irá en un agente aparte, no aquí.)
+  tools: { profile: "minimal", allow: [] },
+  // Solo cargan los plugins de ChatGPT (codex), Claude (anthropic) y el puente del hub.
+  plugins: {
+    // Plugin propio del hub, montado desde openclaw/plugins/hub-puente (docker-compose.yml)
+    load: { paths: ["/home/node/hub-puente"] },
+    entries: {
+      "hub-puente": {
+        enabled: true,
+        // Solo puede usar la cadena acordada (decisión 3) y los modelos del modo análisis
+        // (decisión 4, siempre con confirmación del usuario en core)
+        llm: {
+          allowModelOverride: true,
+          allowedCompletionModels: ["openai/gpt-6-luna", "claude-cli/claude-haiku-4-5",
+                                    "claude-cli/claude-opus-5-5", "claude-cli/claude-sonnet-5",
+                                    "openai/gpt-6-sol"],
+        },
+      },
+    },
+    deny: ["browser", "canvas", "cua-computer", "device-pair", "file-transfer", "geolocation",
+           "github", "linux-node", "memory-core", "talk-voice", "xai", "ollama"],
+  },
+  agents: {
+    defaults: {
+      // Sin AGENTS.md, SOUL.md…: el prompt de sistema queda corto
+      skipBootstrap: true,
+      skills: [],
+      // Decisión 3: el menor razonamiento posible
+      thinkingDefault: "off",
+      // Sin latido: no consulta al modelo por su cuenta
+      heartbeat: { every: "0m" },
+      // model: se fija con "models set" y "models fallbacks add" (ver arriba).
+      // qwen NO va en OpenClaw: core lo llama directo a Ollama con keep_alive corto (decisión 2).
+    },
+  },
+}

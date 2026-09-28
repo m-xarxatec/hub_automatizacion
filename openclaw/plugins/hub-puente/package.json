@@ -1,0 +1,8 @@
+{
+  "name": "hub-puente",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Probado con OpenClaw 2026.9.6 (la API de plugins es experimental: fijar la versión).",
+  "type": "module",
+  "openclaw": { "extensions": ["./index.js"] }
+}

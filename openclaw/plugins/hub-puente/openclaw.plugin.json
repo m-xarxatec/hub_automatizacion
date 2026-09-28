@@ -1,0 +1,8 @@
+{
+  "id": "hub-puente",
+  "name": "Hub puente",
+  "description": "Llamada directa al modelo para core, sin agente ni herramientas.",
+  "categories": ["other"],
+  "activation": { "onStartup": true },
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}
