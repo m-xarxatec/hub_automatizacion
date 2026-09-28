@@ -465,6 +465,9 @@ TELEGRAM_USUARIOS=123456789
 > qwen (`qwen2.5:3b-instruct-q4_K_M`, unos 2 GB) **no** se descarga mientras `llm_local.activo`
 > sea `false`: en el MVP está dormido para no competir por recursos. Lo que sigue explica su nombre
 > por si algún día se activa.
+> **Los modelos de voz no hacen falta aquí:** el contenedor `voz` los descarga solo la primera vez que
+> arranca: Whisper (unos 460 MB) y Kokoro (177 MB, más solo la voz `jf_tebukuro`). Kokoro se verifica
+> con su huella SHA-256 antes de usarse. Mientras descarga, el bot responde con texto.
 > **Qué significa el nombre:**
 > - `3b`: 3 mil millones de parámetros. Es un modelo pequeño, lo máximo razonable para
 >   4 GB de VRAM.

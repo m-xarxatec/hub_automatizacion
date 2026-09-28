@@ -1,6 +1,6 @@
 # Servicio de voz 100 % local: faster-whisper (transcripción) y Kokoro (respuesta hablada).
-# Solo CPU: imagen liviana y portable. Whisper se descarga en modelos/whisper la primera vez;
-# Kokoro (modelo y voz) ya está en modelos/kokoro.
+# Solo CPU: imagen liviana y portable. La primera vez, Whisper se descarga en modelos/whisper y
+# Kokoro (modelo fp16 y solo la voz jf_tebukuro, verificados por SHA-256) en modelos/kokoro.
 FROM python:3.12-slim
 ENV PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app

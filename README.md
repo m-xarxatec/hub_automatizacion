@@ -147,7 +147,8 @@ Completa en `.env` como mínimo `TELEGRAM_TOKEN`, `VAULT_PATH` y `SERVIDOR_NOMBR
 
 1. En Telegram, envía `/start` al bot: responderá con tu ID.
 2. Copia el ID en `TELEGRAM_USUARIOS` (varios separados por coma) y `./hub.sh reiniciar`.
-3. `./hub.sh modelos` descarga el modelo base del router (unos 470 MB, una vez por equipo).
+3. `./hub.sh modelos` descarga el modelo base del router (unos 470 MB, una vez por equipo). Whisper y
+   Kokoro los descarga solo el contenedor `voz` al primer arranque (Kokoro verificado por SHA-256).
 4. `./hub.sh chequeo` debe terminar en `Resultado: listo`.
 5. En Telegram: `/proyecto nuevo Webtoon`, luego `/nota idea: primera prueba` y mira
    cómo aparece en Obsidian del móvil.

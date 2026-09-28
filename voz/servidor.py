@@ -10,6 +10,11 @@ más lento (speed = 1/1,15) y se declara una frecuencia de muestreo 1,15 veces m
 reproducirlo, suena más agudo y a velocidad normal.
 Modelo fp16: en esta CPU es 6 veces más rápido que el int8 (2,9 s contra 17,5 s para 14 s de audio).
 
+Primer arranque en un equipo nuevo: si faltan el modelo o la voz de Kokoro, se descargan de
+las publicaciones de kokoro-onnx (como Whisper, que se descarga solo). Cada archivo se
+comprueba con su huella SHA-256 antes de usarlo, y del paquete de 54 voces se guarda solo
+jf_tebukuro (0,5 MB en vez de 28 MB).
+
 El audio se escribe en un temporal y se borra siempre al terminar, aunque haya error:
 solo sobrevive el texto. El modelo se carga en segundo plano al arrancar para que la
 primera nota no espere la descarga ni la carga.
@@ -18,11 +23,13 @@ primera nota no espere la descarga ni la carga.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import tempfile
 import threading
 import time
+import urllib.request
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -45,6 +52,15 @@ KOKORO_TONO = float(os.environ.get("KOKORO_TONO", "1.15"))
 MAX_CARACTERES_HABLA = int(os.environ.get("VOZ_MAX_CARACTERES", "600"))
 ESPEAK_LIB = os.environ.get("KOKORO_ESPEAK_LIB", "/usr/local/lib/libespeak-ng.so.1")
 ESPEAK_DATOS = os.environ.get("KOKORO_ESPEAK_DATOS", "/usr/local/share/espeak-ng-data")
+KOKORO_URL = os.environ.get("KOKORO_URL",
+                            "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0")
+KOKORO_PAQUETE_VOCES = "voices-v1.0.bin"
+# Huellas SHA-256 de los archivos publicados (verificadas el 2026-09-28). Lo descargado que no
+# coincida se borra: nunca se carga un modelo alterado o incompleto.
+HUELLAS = {
+    "kokoro-v1.0.fp16.onnx": "c1610a859f3bdea01107e73e50100685af38fff88f5cd8e5c56df109ec880204",
+    "voices-v1.0.bin": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
+}
 
 _modelo = None
 _candado = threading.Lock()
@@ -67,12 +83,66 @@ def obtener_modelo():
     return _modelo
 
 
+class ErrorDescarga(Exception):
+    pass
+
+
+def descargar_verificado(nombre: str, destino: Path) -> None:
+    """Descarga `nombre` de KOKORO_URL a `destino` solo si su SHA-256 es el esperado."""
+    huella = HUELLAS.get(nombre)
+    if huella is None:
+        raise ErrorDescarga(f"no hay huella conocida para {nombre}: colócalo a mano en {destino.parent}")
+    temporal = destino.with_name(f".{destino.name}.descarga")
+    suma = hashlib.sha256()
+    log.info("Descargando %s de %s…", nombre, KOKORO_URL)
+    try:
+        with urllib.request.urlopen(f"{KOKORO_URL}/{nombre}", timeout=60) as r, open(temporal, "wb") as f:
+            while bloque := r.read(1 << 20):
+                suma.update(bloque)
+                f.write(bloque)
+        if suma.hexdigest() != huella:
+            raise ErrorDescarga(f"{nombre} no coincide con su huella SHA-256: se descartó")
+        os.replace(temporal, destino)
+    finally:
+        temporal.unlink(missing_ok=True)
+
+
+def asegurar_kokoro() -> None:
+    """Deja en modelos/kokoro el modelo y solo la voz elegida; no hace nada si ya están."""
+    modelo, voces = Path(KOKORO_MODELO), Path(KOKORO_VOCES)
+    modelo.parent.mkdir(parents=True, exist_ok=True)
+    voces.parent.mkdir(parents=True, exist_ok=True)
+    if not modelo.exists():
+        descargar_verificado(modelo.name, modelo)
+    if voces.exists():
+        return
+    import numpy as np
+
+    paquete = voces.with_name(f".{KOKORO_PAQUETE_VOCES}")
+    temporal = voces.with_name(f".{voces.name}.tmp")
+    try:
+        descargar_verificado(KOKORO_PAQUETE_VOCES, paquete)
+        with np.load(paquete) as todas:
+            if KOKORO_VOZ not in todas.files:
+                raise ErrorDescarga(f"la voz {KOKORO_VOZ} no está en {KOKORO_PAQUETE_VOCES}")
+            voz = todas[KOKORO_VOZ]
+        with open(temporal, "wb") as f:
+            np.savez(f, **{KOKORO_VOZ: voz})
+        os.replace(temporal, voces)
+        log.info("Voz %s guardada en %s", KOKORO_VOZ, voces)
+    finally:
+        paquete.unlink(missing_ok=True)
+        temporal.unlink(missing_ok=True)
+
+
 def obtener_kokoro():
     """Carga Kokoro una sola vez (las pruebas reemplazan esta función)."""
     global _kokoro
     with _candado_kokoro:
         if _kokoro is None:
             from kokoro_onnx import EspeakConfig, Kokoro
+
+            asegurar_kokoro()
 
             inicio = time.time()
             _kokoro = Kokoro(KOKORO_MODELO, KOKORO_VOCES,

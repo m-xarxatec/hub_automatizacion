@@ -119,3 +119,53 @@ def test_a_opus_codifica_ogg_opus_de_verdad():
         pista = cont.streams.audio[0]
         assert pista.codec_context.name == "opus" and pista.codec_context.sample_rate == 48000
         assert pista.codec_context.channels == 1
+
+
+# --- descarga de Kokoro en un equipo nuevo (sin red: URLs file://) --------------------
+def _publicacion(tmp_path, monkeypatch, modelo=b"modelo-onnx", huella_modelo=None):
+    """Simula la publicación de kokoro-onnx en una carpeta local."""
+    import hashlib
+    import io
+
+    import numpy as np
+    origen = tmp_path / "publicacion"
+    origen.mkdir()
+    (origen / "kokoro-v1.0.fp16.onnx").write_bytes(modelo)
+    paquete = io.BytesIO()
+    np.savez(paquete, jf_tebukuro=np.ones((2, 1, 4), np.float32), af_otra=np.zeros((2, 1, 4), np.float32))
+    (origen / "voices-v1.0.bin").write_bytes(paquete.getvalue())
+    sha = lambda p: hashlib.sha256((origen / p).read_bytes()).hexdigest()  # noqa: E731
+    destino = tmp_path / "modelos" / "kokoro"
+    monkeypatch.setattr(servidor, "KOKORO_URL", origen.as_uri())
+    monkeypatch.setattr(servidor, "HUELLAS", {"kokoro-v1.0.fp16.onnx": huella_modelo or sha("kokoro-v1.0.fp16.onnx"),
+                                              "voices-v1.0.bin": sha("voices-v1.0.bin")})
+    monkeypatch.setattr(servidor, "KOKORO_MODELO", str(destino / "kokoro-v1.0.fp16.onnx"))
+    monkeypatch.setattr(servidor, "KOKORO_VOCES", str(destino / "voces_jf_tebukuro.npz"))
+    return destino
+
+
+def test_descarga_kokoro_y_guarda_solo_la_voz_elegida(tmp_path, monkeypatch):
+    import numpy as np
+    destino = _publicacion(tmp_path, monkeypatch)
+    servidor.asegurar_kokoro()
+    assert (destino / "kokoro-v1.0.fp16.onnx").read_bytes() == b"modelo-onnx"
+    with np.load(destino / "voces_jf_tebukuro.npz") as voces:
+        assert voces.files == ["jf_tebukuro"] and voces["jf_tebukuro"].shape == (2, 1, 4)
+    assert sorted(p.name for p in destino.iterdir()) == ["kokoro-v1.0.fp16.onnx", "voces_jf_tebukuro.npz"]
+    # Ya están: no se vuelve a descargar (la publicación podría no existir).
+    monkeypatch.setattr(servidor, "KOKORO_URL", (tmp_path / "no-existe").as_uri())
+    servidor.asegurar_kokoro()
+
+
+def test_descarga_con_huella_distinta_se_descarta(tmp_path, monkeypatch):
+    destino = _publicacion(tmp_path, monkeypatch, huella_modelo="0" * 64)
+    with pytest.raises(servidor.ErrorDescarga, match="huella SHA-256"):
+        servidor.asegurar_kokoro()
+    assert list(destino.iterdir()) == []   # ni el archivo ni restos temporales
+
+
+def test_archivo_sin_huella_conocida_no_se_descarga(tmp_path, monkeypatch):
+    _publicacion(tmp_path, monkeypatch)
+    monkeypatch.setattr(servidor, "KOKORO_MODELO", str(tmp_path / "otro-modelo.onnx"))
+    with pytest.raises(servidor.ErrorDescarga, match="colócalo a mano"):
+        servidor.asegurar_kokoro()
