@@ -1,0 +1,7 @@
+// Carpeta "hub-router" de Syncthing: solo viajan los ejemplos aprendidos
+// (correcciones*.yaml, aprendidos*.yaml). El modelo pesa ~470 MB y cada equipo
+// lo reconstruye con /reentrenar; tampoco se copian sus carpetas temporales.
+modelo
+.modelo.nuevo
+.modelo.viejo
+.entrenando-*

@@ -6,6 +6,10 @@
 # Estado y modelos locales de cada equipo (no se suben ni se sincronizan)
 datos/*
 !datos/.gitkeep
+# Salvo el .stignore de la carpeta del router que se comparte por Syncthing (README §2)
+!datos/router/
+datos/router/*
+!datos/router/.stignore
 modelos/*
 !modelos/.gitkeep
 

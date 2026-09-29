@@ -112,6 +112,22 @@ y un `.stignore` que evita sincronizar el estado de la interfaz de Obsidian y lo
 temporales. Syncthing no sincroniza el `.stignore`: cada servidor lo crea la primera
 vez que arranca `core`, y el móvil no lo necesita.
 
+### Entrenamiento del router compartido (carpeta `hub-router`)
+
+Lo que el router aprende (`datos/router/correcciones.yaml` y `aprendidos.yaml`) viaja entre
+la PC y la laptop en una **segunda carpeta de Syncthing**, solo entre esos dos equipos (no el
+móvil). El modelo (~470 MB) no viaja: cada equipo lo reconstruye con `/reentrenar`.
+
+1. En los dos equipos: *Agregar carpeta* con **ID de carpeta `hub-router`** y la ruta
+   `<repo>/datos/router`. El `.stignore` ya viene en el repositorio (excluye `modelo`).
+2. Compartirla entre la PC y la laptop.
+3. Al cambiar de servidor: esperar *Actualizada*, luego `/estado` y, si hay pendientes, `/reentrenar`.
+
+Solo un equipo es servidor a la vez (latido y 409), así que nunca escriben los dos a la vez.
+**La primera vez**, si los dos equipos ya tienen esos archivos, renombra los de uno antes de
+compartir y únelos después (ver `docs/BITACORA.md`, 2026-09-29), o Syncthing creará un
+`.sync-conflict`. Frases para entrenarlo: [`lista_entrenamiento.md`](lista_entrenamiento.md).
+
 ---
 
 ## 3. Primer arranque
