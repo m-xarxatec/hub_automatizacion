@@ -14,12 +14,14 @@ no carga nada pesado.
 
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import shutil
 import tempfile
 import time
 from pathlib import Path
+from typing import Callable
 
 from .reglas import Decision, tipo_nota
 
@@ -59,11 +61,13 @@ def cargar(carpeta: Path) -> Clasificador | None:
 
 
 def entrenar(textos: list[str], etiquetas: list[str], destino: Path, *,
-             base: str = MODELO_BASE, iteraciones: int = 20, extra: dict | None = None) -> dict:
+             base: str = MODELO_BASE, iteraciones: int = 20, extra: dict | None = None,
+             liberar: Callable[[], None] | None = None) -> dict:
     """Entrena y guarda el modelo en `destino`. Devuelve los metadatos del entrenamiento.
 
     Se entrena en una carpeta temporal y solo al final se reemplaza la anterior:
-    si algo falla a mitad, el bot sigue con el modelo viejo.
+    si algo falla a mitad, el bot sigue con el modelo viejo. `liberar` suelta el modelo
+    en uso si hace falta para reemplazarlo (ver instalar()).
     """
     if len(set(etiquetas)) < 2:
         raise ValueError("Hacen falta ejemplos de al menos dos acciones para entrenar.")
@@ -99,8 +103,41 @@ def entrenar(textos: list[str], etiquetas: list[str], destino: Path, *,
         **(extra or {}),
     }
     (nuevo / METADATOS).write_text(json.dumps(metadatos, ensure_ascii=False, indent=2), encoding="utf-8")
-    if destino.exists():
-        destino.rename(viejo)
-    nuevo.rename(destino)
-    shutil.rmtree(viejo, ignore_errors=True)
+    instalar(nuevo, destino, liberar)
     return metadatos
+
+
+def instalar(nuevo: Path, destino: Path, liberar: Callable[[], None] | None = None,
+             intentos: int = 5, espera_s: float = 0.5) -> None:
+    """Pone el modelo de `nuevo` en `destino`, apartando antes el que hay.
+
+    En Linux se renombra aunque el bot tenga el modelo cargado. Con el servidor en Windows
+    (Docker Desktop) no: una carpeta con archivos abiertos no se puede renombrar. Solo en ese
+    caso se llama a `liberar` (el router usa las reglas un instante) y se reintenta; una
+    predicción en curso puede retener el modelo unos milisegundos, de ahí los reintentos.
+    """
+    viejo = destino.parent / f".{destino.name}.viejo"
+    if destino.exists():
+        try:
+            destino.rename(viejo)
+        except PermissionError:
+            if liberar is None:
+                raise
+            log.info("La carpeta del modelo está en uso (servidor en Windows): se suelta y se reintenta")
+            liberar()
+            for intento in range(intentos):
+                gc.collect()
+                try:
+                    destino.rename(viejo)
+                    break
+                except PermissionError:
+                    if intento == intentos - 1:
+                        raise
+                    time.sleep(espera_s)
+    try:
+        nuevo.rename(destino)
+    except OSError:
+        if viejo.exists() and not destino.exists():
+            viejo.rename(destino)   # que el bot no se quede sin modelo
+        raise
+    shutil.rmtree(viejo, ignore_errors=True)

@@ -154,8 +154,18 @@ class Router:
         aprendidos = ejemplos.leer_aprendidos(self.carpeta)
         textos, etiquetas = ejemplos.unir(ejemplos.leer_ejemplos(ruta_ejemplos), correcciones,
                                           self.acciones, aprendidos)
-        metadatos = clasificador.entrenar(textos, etiquetas, self.carpeta_modelo,
-                                          extra={"correcciones": len(correcciones),
-                                                 "aprendidos": len(aprendidos)})
+        try:
+            metadatos = clasificador.entrenar(textos, etiquetas, self.carpeta_modelo,
+                                              extra={"correcciones": len(correcciones),
+                                                     "aprendidos": len(aprendidos)},
+                                              liberar=self._soltar_modelo)
+        except Exception:
+            if self.clasificador is None:   # se soltó para reemplazarlo (Windows) y falló: vuelve el viejo
+                self.clasificador = clasificador.cargar(self.carpeta_modelo)
+            raise
         self.clasificador = clasificador.cargar(self.carpeta_modelo)
         return metadatos
+
+    def _soltar_modelo(self) -> None:
+        """Mientras se reemplaza el modelo, decidir() usa las reglas (solo con el servidor en Windows)."""
+        self.clasificador = None

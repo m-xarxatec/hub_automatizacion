@@ -7,6 +7,7 @@ SetFit de verdad está marcada como lenta.
 
 import asyncio
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -176,8 +177,8 @@ def test_llm_local_acota_confianza_y_tolera_ollama_caido(cfg):
 def test_reentrenar_une_fuentes_y_recarga(cfg, tmp_path, monkeypatch):
     llamadas = {}
 
-    def entrenar_falso(textos, etiquetas, destino, extra=None):
-        llamadas.update(textos=textos, etiquetas=etiquetas, destino=destino)
+    def entrenar_falso(textos, etiquetas, destino, extra=None, liberar=None):
+        llamadas.update(textos=textos, etiquetas=etiquetas, destino=destino, liberar=liberar)
         return {"ejemplos": len(textos), **(extra or {})}
 
     monkeypatch.setattr(clasificador, "entrenar", entrenar_falso)
@@ -189,6 +190,65 @@ def test_reentrenar_une_fuentes_y_recarga(cfg, tmp_path, monkeypatch):
     assert meta["correcciones"] == 1 and meta["aprendidos"] == 1
     assert "pintar fondos el domingo" in llamadas["textos"] and "falta el layout" in llamadas["textos"]
     assert llamadas["destino"] == tmp_path / "router" / "modelo"
+    assert r.clasificador is not None
+    assert llamadas["liberar"] is not None
+
+
+# --- reemplazo del modelo (servidor en Windows) -----------------------------------------
+def _modelos(tmp_path):
+    destino, nuevo = tmp_path / "modelo", tmp_path / ".modelo.nuevo"
+    for carpeta, texto in ((destino, "viejo"), (nuevo, "nuevo")):
+        carpeta.mkdir()
+        (carpeta / "cual.txt").write_text(texto, encoding="utf-8")
+    return destino, nuevo
+
+
+def _bloquear_mientras(monkeypatch, destino, en_uso):
+    """Como Windows: la carpeta del modelo no se puede renombrar mientras en_uso[0] sea True."""
+    original = Path.rename
+
+    def rename(self, objetivo):
+        if self == destino and en_uso[0]:
+            raise PermissionError(13, "Permission denied")
+        return original(self, objetivo)
+    monkeypatch.setattr(Path, "rename", rename)
+
+
+def test_instalar_en_linux_no_suelta_el_modelo(tmp_path):
+    destino, nuevo = _modelos(tmp_path)
+    soltado = []
+    clasificador.instalar(nuevo, destino, liberar=lambda: soltado.append(1))
+    assert (destino / "cual.txt").read_text(encoding="utf-8") == "nuevo"
+    assert soltado == [] and not nuevo.exists() and not (tmp_path / ".modelo.viejo").exists()
+
+
+def test_instalar_en_windows_suelta_el_modelo_y_reintenta(tmp_path, monkeypatch):
+    destino, nuevo = _modelos(tmp_path)
+    en_uso = [True]
+    _bloquear_mientras(monkeypatch, destino, en_uso)
+    clasificador.instalar(nuevo, destino, liberar=lambda: en_uso.__setitem__(0, False), espera_s=0)
+    assert (destino / "cual.txt").read_text(encoding="utf-8") == "nuevo"
+    assert not (tmp_path / ".modelo.viejo").exists()
+
+
+def test_instalar_bloqueado_sin_remedio_conserva_el_modelo_viejo(tmp_path, monkeypatch):
+    destino, nuevo = _modelos(tmp_path)
+    _bloquear_mientras(monkeypatch, destino, [True])
+    with pytest.raises(PermissionError):
+        clasificador.instalar(nuevo, destino, liberar=lambda: None, intentos=2, espera_s=0)
+    assert (destino / "cual.txt").read_text(encoding="utf-8") == "viejo"
+
+
+def test_reentrenar_fallido_tras_soltar_recarga_el_modelo_viejo(cfg, tmp_path, monkeypatch):
+    def entrenar_falso(textos, etiquetas, destino, extra=None, liberar=None):
+        liberar()
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(clasificador, "cargar", lambda carpeta: ClasificadorFalso("nota", 0.9))
+    r = _router(cfg, tmp_path, clf=ClasificadorFalso("tarea", 0.9))
+    monkeypatch.setattr(clasificador, "entrenar", entrenar_falso)
+    with pytest.raises(PermissionError):
+        r.reentrenar()
     assert r.clasificador is not None
 
 

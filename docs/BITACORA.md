@@ -1652,3 +1652,43 @@ listarlo entre los 3 plugins.
 **Qué aprendiste: *fast-forward*.** Si tu rama no tiene commits propios desde que salió la otra, fusionar es solo mover
 la etiqueta `main` hacia adelante: no hay nada que combinar ni commit nuevo. Los conflictos vienen de los cambios sin
 confirmar, por eso se guardan antes en un *stash* y se reaplican después.
+
+## 2026-09-29 — `/reentrenar` en Windows: soltar el modelo antes de reemplazarlo
+
+**Qué se hizo**
+- Con la laptop como servidor, `/reentrenar` entrenó bien (133 ejemplos) pero falló al final:
+  `PermissionError: '/datos/router/modelo' -> '/datos/router/.modelo.viejo'`. Se instaló a mano esa vez
+  (parar `core`, cambiar las carpetas, arrancar).
+- Arreglo: el reemplazo del modelo pasa a `clasificador.instalar()`. Si renombrar la carpeta falla por permisos,
+  llama a `liberar` (el router suelta el modelo y usa las reglas un instante), ejecuta el recolector de basura y
+  reintenta. Si aun así falla, el router vuelve a cargar el modelo viejo.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/router/clasificador.py` | `instalar()`: reemplazo con reintento solo si hay `PermissionError`; si falla a medias, devuelve el modelo viejo a su sitio |
+| `core/app/router/cascada.py` | `reentrenar()` pasa `liberar=_soltar_modelo` y recarga el modelo viejo si el reemplazo falla tras soltarlo |
+| `core/tests/test_router_local.py` | 4 pruebas: Linux no suelta el modelo, Windows lo suelta y reintenta, bloqueo sin remedio conserva el viejo, recarga tras fallo |
+
+**Decisiones y por qué**
+- **Se activa por el error, no detectando el sistema:** `core` corre en un contenedor Linux también en Windows, así
+  que el sistema operativo no se ve desde dentro. Lo que cambia es el montaje: en Linux la carpeta se renombra
+  aunque el modelo esté cargado y el código hace lo mismo que antes; solo en Windows aparece el `PermissionError`.
+- **Reintentos cortos (5 × 0,5 s):** una predicción en curso puede retener el modelo unos milisegundos.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| Windows no deja renombrar una carpeta con archivos abiertos (el modelo cargado usa `model.safetensors`) | Comprobado en el montaje real: cargado → `PermissionError`; soltado + `gc.collect()` → rename OK |
+
+**Resultado:** 255 pruebas pasan (1 omitida). Prueba real en la laptop sobre una copia: sin el arreglo se reproduce
+el error; con él el modelo se instala, se recarga y no quedan `.modelo.*`. `core` reconstruido con el arreglo.
+
+**Cómo probarlo:** en la laptop como servidor, `/reentrenar`; el log dice "La carpeta del modelo está en uso
+(servidor en Windows): se suelta y se reintenta" y `/estado` muestra 0 pendientes.
+
+**Qué aprendiste: el mismo código, distinto sistema de archivos.** Un contenedor Linux sobre una carpeta de Windows
+hereda las reglas de NTFS: una carpeta con archivos abiertos no se renombra. Por eso las pruebas en Ubuntu no lo
+veían: el fallo no estaba en el código sino en el montaje.
