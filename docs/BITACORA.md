@@ -1383,3 +1383,106 @@ contenedor), chequeo "listo" y entrenamiento real en 197 s con 132 ejemplos.
 con el que corre, no con "el usuario de Docker". Si corre como root, todo lo que crea es de root en el equipo.
 Fijar `user:` al UID del equipo hace que los archivos sean tuyos, siempre que el contenedor no necesite escribir
 fuera de las carpetas montadas (de ahí `HOME=/tmp` y quitar los checkpoints de `/app`).
+
+## 2026-09-29 — Laptop (Windows) preparada como servidor; plugin puente dentro de la imagen
+
+**Qué se hizo**
+- Auditoría de solo lectura (`AUDITORIA_ESTADO.md`) y, después, preparación de la laptop siguiendo la GUIA (secciones 3, 5 y 6).
+- Windows: `core.autocrlf false` (3.4), suspensión con cargador en "nunca" (3.6, antes 15 min), Docker Desktop
+  arrancado y GPU visible desde Docker (RTX 3050, 4 GB) (3.3), Syncthing Windows Setup v2.0.2 instalado por usuario
+  con inicio al iniciar sesión (3.5; huella SHA-256 igual a la publicada en GitHub).
+- `.env` de la laptop (`SERVIDOR_NOMBRE=laptop`, `VAULT_PATH=C:/Users/micha/Boveda`, `LAN_IP=0.0.0.0`,
+  `COMPOSE_PROFILES=consulta`, token del gateway nuevo). Falta `TELEGRAM_TOKEN` y `TELEGRAM_USUARIOS`.
+- Imágenes construidas en Windows (`core` 2,4 GB, `voz` 0,9 GB, `openclaw` 5 GB), modelo base descargado, router
+  entrenado (120 ejemplos, 308 s), `voz` con Whisper `small` y Kokoro descargado y verificado.
+- OpenClaw: onboarding, `config patch` y cadena de modelos (`gpt-6-luna` → `claude-haiku-4-5`). Falta iniciar sesión.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `openclaw/Dockerfile` | Copia `plugins/hub-puente` en la imagen (root, sin escritura para otros) |
+| `docker-compose.yml` | Ya no monta `./openclaw/plugins/hub-puente` |
+| `openclaw/README.md`, `openclaw/fragmento-config.json5` | Comentarios del montaje actualizados |
+| `AUDITORIA_ESTADO.md` (nuevo) | Estado del proyecto antes de preparar la laptop |
+
+**Decisiones y por qué**
+- **Plugin copiado y no montado:** Docker Desktop en Windows monta las carpetas con permisos 777 y OpenClaw rechaza
+  un plugin escribible por cualquiera ("blocked plugin candidate: world-writable path"). Copiarlo en la imagen da el
+  mismo resultado en Ubuntu y en Windows. El precio: tras cambiar el plugin hay que `docker compose build openclaw`.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| OpenClaw bloqueaba `hub-puente` en Windows (modo 777) | Plugin dentro de la imagen; el log dice `3 plugins: anthropic, hub-puente, openai` |
+| `modelos/hf` ocupa 4,1 GB y no ~470 MB | El script baja todas las variantes del modelo base; pendiente de revisar (no bloquea) |
+
+**Resultado:** 247 pruebas de `core` (1 omitida) y 12 de `voz` pasan en la laptop. Chequeo: todo OK salvo
+`TELEGRAM_TOKEN`. Con el router entrenado, 12 de 15 frases de prueba se resuelven sin tokens (las 15 bien clasificadas).
+
+**Cómo probarlo:** `.\hub.ps1 chequeo` y `docker compose logs openclaw | findstr listening`.
+
+**Qué aprendiste: los permisos no viajan entre sistemas.** NTFS no tiene los permisos de Linux; al montar una carpeta
+de Windows en un contenedor, Docker inventa unos (777). Si un programa revisa los permisos por seguridad, lo que se
+copia dentro de la imagen es más predecible que lo que se monta.
+
+## 2026-09-29 — Entrenamiento del router compartido por Syncthing y lista de entrenamiento
+
+**Qué se hizo**
+- Lo que aprende el router (`correcciones.yaml`, `aprendidos.yaml`) se comparte entre la PC y la laptop con una
+  segunda carpeta de Syncthing, `hub-router` (= `datos/router`). El modelo no viaja: cada equipo hace `/reentrenar`.
+- Carpeta `hub-router` creada en el Syncthing de la laptop (aún sin compartir: la PC está apagada).
+- Se midieron 97 frases candidatas con el router de la laptop (0 tokens, sin IA) y se dejaron en
+  `lista_entrenamiento.md` solo las 29 que confunde o duda, más 3 que no se deben enviar.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `datos/router/.stignore` (nuevo) | Syncthing ignora `modelo` y los temporales del entrenamiento |
+| `.gitignore` | Excepción para subir solo ese `.stignore` de `datos/` (así llega a la PC por git) |
+| `lista_entrenamiento.md` (nuevo) | Frases por prioridad, respuesta esperada y qué cuesta cada botón |
+| `README.md` | §2: carpeta `hub-router` |
+
+**Decisiones y por qué**
+- **Carpeta aparte y no la bóveda:** la bóveda va al móvil, y el router solo lo usan la PC y la laptop.
+- **Sin cambios de código:** solo un equipo es servidor a la vez (latido y 409), así que nunca escriben los dos
+  los mismos archivos. Solo hay riesgo de choque la primera vez, si los dos equipos ya tienen su propio archivo.
+- **La lista se midió antes de escribirla:** de las frases "obvias", casi todas ya se clasificaban con > 0,9 y no
+  enseñarían nada. Los fallos se concentran en consultas sin signo de pregunta ("me puedes decir…", "quisiera
+  saber…"), análisis en forma de opinión ("crees que encaja…") y frases cortas de solo sustantivos.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| Si el router ejecuta con seguridad, no hay botones para corregirlo | Esas 3 frases van a la sección 4 de la lista: hay que añadirlas a `ejemplos.yaml` a mano. "Máscaras de zorro" generaría una imagen |
+
+**Primera unión PC ↔ laptop (una sola vez).** En la laptop, **antes** de aceptar `hub-router` desde la PC:
+```powershell
+Rename-Item datos\router\aprendidos.yaml aprendidos-laptop.yaml
+if (Test-Path datos\router\correcciones.yaml) { Rename-Item datos\router\correcciones.yaml correcciones-laptop.yaml }
+```
+Aceptar la carpeta, esperar *Actualizada* y unir (las repetidas no se duplican):
+```powershell
+@'
+from pathlib import Path
+from app.router import ejemplos as e
+c = Path("/datos/router")
+for x in e.leer_correcciones(c, "correcciones-laptop.yaml"): e.guardar_correccion(c, x["texto"], x["accion"])
+for x in e.leer_correcciones(c, "aprendidos-laptop.yaml"): e.guardar_aprendido(c, x["texto"], x["accion"])
+print(len(e.leer_correcciones(c)), "correcciones,", len(e.leer_aprendidos(c)), "aprendidos")
+'@ | docker compose exec -T core python -
+Remove-Item datos\router\*-laptop.yaml
+```
+Y `/reentrenar`. Probado sobre una copia temporal: une y no repite.
+
+**Resultado:** `git check-ignore` confirma que solo sube `datos/router/.stignore`; Syncthing indexa en
+`hub-router` únicamente `aprendidos.yaml` (192 bytes), no el modelo.
+
+**Cómo probarlo:** en Syncthing, `hub-router` → *Archivos locales*: solo los `.yaml`.
+
+**Qué aprendiste: medir antes de entrenar.** Un ejemplo que el modelo ya acierta con seguridad no le aporta nada.
+Probar primero las frases sin gastar tokens muestra dónde está el hueco de verdad, y ahí se concentra el
+esfuerzo (y los tokens).
