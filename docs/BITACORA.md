@@ -1990,3 +1990,88 @@ y el tipo de destino; nunca el texto del usuario.
 SetFit es rápido y local para clasificar; el LLM entiende el lenguaje real (nombres mal transcritos, "eso de antes",
 dónde va cada cosa). Un buen sistema no elige uno: los ordena, usa el más barato que alcanza y deja que el grande
 enseñe al chico.
+
+## 2026-09-30 — Redactor con LLM, proyectos sin esqueleto y lo concreto en local
+
+El usuario probó el bot y lo encontró "muy tonto para crear las notas": guardaba cada mensaje tal cual y en un
+solo lugar, y creaba carpetas y secciones vacías que nadie pidió. Pedido: creación simple (el proyecto es solo su
+carpeta y el bot pregunta qué va dentro), archivos y fichas solo cuando hay algo que poner, más LLM para decidir y
+el router local solo para funciones concretas. Se aceptó gastar más tokens a cambio de calidad.
+
+**Qué se hizo**
+- **Redactor** (`acciones/redactor.py`): con el mensaje, la pista del intérprete, la última acción y el contenido
+  real del proyecto (lo más relacionado primero, hasta 12.000 tokens), `gpt-6-sol` devuelve operaciones
+  `agregar` (al final o dentro de una sección) y `crear` (archivo o ficha), una respuesta corta, avisos de
+  contradicción y, si falta algo, una pregunta. Reparte un mensaje entre historia y fichas y enlaza con `[[…]]`.
+- **El código impone las reglas de la bóveda:** solo agregar (crear sobre algo existente pasa a agregar), rutas
+  dentro del proyecto con nombres válidos en Windows, `Imagenes/`, `Analisis/` y `tareas.md` fuera de su alcance,
+  fichas nuevas en la carpeta de personajes con `tipo: personaje`, y **cobertura**: si lo propuesto deja fuera
+  más del 40 % de las palabras con contenido del mensaje, no se aplica y el mensaje se guarda tal cual.
+- **Sin esqueletos:** `crear_proyecto` hace solo la carpeta y `_proyecto.md` y pregunta "¿De qué trata…?"; la
+  respuesta llega como mensaje normal y el redactor la ubica. Fichas nuevas con solo lo que se sabe (las
+  secciones aparecen al usarse). Fichas nuevas en `Personajes/`; las de `Historia/Personajes/` siguen valiendo.
+  Una ficha es cualquier nota con `tipo: personaje`.
+- **Lo concreto en local, por texto y voz:** `procesar()` une los dos caminos; órdenes de frase fija nuevas:
+  diario ("anota en mi diario que…", `/diario`), limpiar, diagnóstico, modelo, ayuda y conversación nueva.
+- **Contexto:** el bot recuerda las 3 últimas acciones (30 min) y las consultas guardan pregunta y respuesta,
+  así "anota esto" después de una consulta (aunque en medio se cree un proyecto) guarda la respuesta. La
+  consulta lee las notas del proyecto. "Así será Aely" (acción `nombrar_imagen`) renombra la última imagen y la
+  pone en su ficha. El intérprete reintenta una vez si GPT devuelve vacío rápido; sin corte de 400 caracteres.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/acciones/redactor.py` | Nuevo: contexto del proyecto, prompt, validación, cobertura y escritura de las operaciones |
+| `core/app/entradas/telegram_bot.py` | `procesar`, `ejecutar_orden`, `redactar`, `escribiendo`, `/diario`, proyecto con pregunta, 3 últimas acciones, consulta con notas, `nombrar_imagen` en la ficha |
+| `core/app/boveda/proyectos.py` | Proyecto sin subcarpetas ni `tareas.md`; notas aparte en la raíz del proyecto |
+| `core/app/acciones/referencias.py` | `carpeta_personajes` (nueva o la anterior), `fichas_de`, `nombres_de`, ficha sin esqueleto, párrafos separados en secciones |
+| `core/app/acciones/personajes.py` | Fichas por `tipo: personaje`; descripción bajo el título en fichas sin secciones |
+| `core/app/acciones/consulta.py` | `notas_del_proyecto` y notas en el prompt de sistema |
+| `core/app/router/interprete.py` | Acción `nombrar_imagen`, "anota esto", respuesta a una pregunta, reintento, consulta vs. análisis |
+| `core/app/router/reglas.py` | Órdenes fijas: diario, limpiar, diagnóstico, modelo, ayuda, nuevo |
+| `core/app/boveda/escritor.py` | `sin_frontmatter` compartido |
+| `core/app/main.py`, `core/app/config.py`, `config.yaml` | `proveedores.redactor`, `consulta_notas_tokens`, `boveda.personajes` (sale `subcarpetas`) |
+| `core/tests/test_redactor.py` | Nuevo: 23 pruebas (validación, aplicar, cobertura, contexto, modelo simulado y el bot) |
+| `README.md`, `GUIA.md` | Recorrido nuevo (sección 7) y primer arranque sin esqueleto |
+
+**Decisiones y por qué**
+- **Dos pasos (intérprete + redactor) y no uno:** el intérprete sigue rápido y barato para consultas, imágenes y
+  proyectos; solo lo que se guarda paga el contexto grande. Si el redactor falla, queda el camino anterior.
+- **El modelo propone, el código dispone:** las reglas de la bóveda (solo agregar, dentro del proyecto, nombres
+  válidos, no perder palabras) no dependen de que el modelo obedezca.
+- **Razonamiento bajo:** medido con 9 mensajes reales del usuario, organiza igual que el medio y tarda 2-7 s
+  (medio: 3-13 s). Queda en `config.yaml` por si hace falta subirlo.
+- **Preguntas sin estados especiales:** la pregunta del bot se guarda como última acción y la respuesta pasa por
+  el camino normal; intérprete y redactor la unen con el mensaje original.
+
+**Problemas encontrados**
+- Primera prueba real: toda la trama iba a `_proyecto.md` (era el único archivo y "prefiere los existentes") y
+  "¿y la historia?" se tomaba como análisis. Se ajustaron las instrucciones: `_proyecto.md` solo para la premisa;
+  consulta incluye preguntas sobre sus notas, análisis solo si pide analizar o revisar.
+- Mensaje real de las 01:10 ("Anota esto dentro de la idea principal…"): "esto" era la respuesta de una consulta
+  anterior y en medio se creó el proyecto. El bot solo recordaba la última acción y no las consultas: ahora
+  recuerda 3 y las consultas guardan su respuesta.
+- Un archivo grande que no cabía en el contexto se recortaba y dejaba fuera a los chicos: ahora entran primero
+  los que caben enteros. El resumen hablado leía rutas de los enlaces: ahora usa el nombre visible. El aviso
+  "escribiendo…" podía cancelarse antes de salir: el primero se manda de inmediato. Párrafos pegados al agregar
+  dentro de una sección: ahora van separados por una línea en blanco (las viñetas, seguidas).
+- A las 01:13 la bóveda de pruebas quedó vacía: lo hizo el usuario desde el explorador (está en la papelera);
+  las pruebas usan bóvedas temporales.
+
+**Resultado de las pruebas:** 308 pasan (1 omitida) en `.venv` y en la imagen reconstruida. Pruebas reales con
+OpenClaw: 9 mensajes del día anterior (dos niveles de razonamiento) y el bot completo con Telegram simulado y los
+mensajes del usuario de las 01:07-01:10: la consulta, el proyecto por voz, "anota esto…" (guardó la respuesta
+completa como idea principal), tarea y lista de tareas sin tokens (0,0 s), fichas de Elías y Marta enlazadas y
+"¿de qué trata mi proyecto?" respondido con sus notas.
+
+**Cómo probarlo:** `docker compose up -d --no-deps --force-recreate core`; luego `/proyecto nuevo Prueba`,
+responder de qué trata, "Kael es un cazador de monstruos que perdona a Aely, una elfa albina", "ella pelea con
+dos hachas", "crea un personaje herrero" (pregunta el nombre), "crea dentro del proyecto un archivo Mundo y anota
+que…", "tarea: …", "dime mis tareas", "anota en mi diario que…" y "¿de qué trata mi proyecto?". Revisar en
+Obsidian que no haya carpetas ni secciones vacías.
+
+**Qué aprendiste: el modelo propone, el código dispone.** Un LLM decide mejor que cualquier regla dónde va una
+idea, pero no se le confían las garantías: se le pide un plan en JSON y el código lo valida (solo agregar, dentro
+del proyecto, sin perder palabras) antes de tocar un archivo. Así se gana criterio sin perder seguridad, y si el
+modelo falla o se equivoca, el camino anterior sigue ahí.

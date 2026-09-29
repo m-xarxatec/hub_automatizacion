@@ -7,16 +7,12 @@ boveda:
   diario: Diario
   proyectos: Proyectos
   interna: _hub
-  # Subcarpetas que se crean en cada proyecto nuevo
-  subcarpetas:
-    - Ideas
-    - Historia
-    - Historia/Personajes
-    - Produccion
-    - Imagenes
-    - Referencias
-    - Analisis
-  # Tipo de nota -> subcarpeta del proyecto
+  # Un proyecto nuevo es solo su carpeta y _proyecto.md (decidido el 2026-09-30): las carpetas y
+  # archivos aparecen cuando hay algo que guardar. Dónde va cada nota lo decide el redactor
+  # (proveedores.redactor); el esquema por tipo de abajo queda de respaldo si GPT no responde.
+  # Fichas nuevas de personaje (si el proyecto ya tiene Historia/Personajes, se usa esa):
+  personajes: Personajes
+  # Respaldo sin GPT: tipo de nota -> archivo del proyecto (Ideas.md, Historia.md…)
   destino_por_tipo:
     idea: Ideas
     general: Ideas
@@ -62,6 +58,16 @@ proveedores:
   consulta:
     - {modelo: openai/gpt-6-luna, razonamiento: low}
     - {modelo: claude-cli/claude-haiku-4-5, razonamiento: "off", aislado: true}
+  # Redactor (decidido el 2026-09-30): con tu mensaje y el contenido real del proyecto decide qué
+  # escribir y dónde (archivo existente, sección de una ficha, archivo o ficha nueva, varios a la vez)
+  # o te pregunta si falta algo. Solo agrega; nunca borra ni sale del proyecto. Si no responde, la nota
+  # se guarda por tipo como antes. Medido el 2026-09-30 con 9 mensajes reales: "low" organiza igual de
+  # bien que "medium" y tarda 2-7 s (medium, 3-13 s). Si notas errores de criterio, prueba "medium".
+  # tope_contexto_tokens: cuánto del proyecto lee (lo más relacionado primero).
+  redactor: {activo: true, modelo: openai/gpt-6-sol, razonamiento: low, timeout_s: 90, max_tokens: 3000,
+             tope_contexto_tokens: 12000}
+  # La consulta lee las notas del proyecto activo hasta este tope (0 = sin notas).
+  consulta_notas_tokens: 6000
   llm_local:
     # Apagado en el MVP: el router usa SetFit + reglas y las imágenes usan la idea tal cual.
     # Vuelve (true) con las medidas ante fallos: segunda opinión, prompts y último respaldo.

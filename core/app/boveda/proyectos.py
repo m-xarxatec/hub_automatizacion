@@ -80,21 +80,17 @@ class Boveda:
         return None
 
     def crear_proyecto(self, nombre: str, descripcion: str = "") -> str:
+        """Solo la carpeta y su índice (_proyecto.md, con los alias). Nada de esqueleto: las
+        carpetas y archivos aparecen cuando hay algo que guardar en ellos (decidido el 2026-09-30)."""
         visible = escritor.nombre_carpeta(nombre)
         existente = self.buscar_proyecto(visible)
         if existente:
             return existente
         carpeta = self.carpeta_proyectos / visible
-        for sub in self.cfg["subcarpetas"]:
-            (carpeta / sub).mkdir(parents=True, exist_ok=True)
         fecha = self.ahora().strftime("%Y-%m-%d")
-        indice = escritor.con_frontmatter(
-            {"tipo": "proyecto", "creado": fecha, "aliases": []},
-            f"# {visible}\n\n{descripcion or 'Descripción del proyecto.'}\n\n"
-            "## Enlaces\n\n- [[tareas]]\n",
-        )
+        cuerpo = f"# {visible}\n" + (f"\n{descripcion.strip()}\n" if descripcion.strip() else "")
+        indice = escritor.con_frontmatter({"tipo": "proyecto", "creado": fecha, "aliases": []}, cuerpo)
         escritor.escribir_atomico(carpeta / "_proyecto.md", indice)
-        escritor.escribir_atomico(carpeta / "tareas.md", f"# Tareas de {visible}\n\n")
         return visible
 
     # --- notas y tareas -------------------------------------------------------
@@ -152,7 +148,8 @@ class Boveda:
         titulo = (titulo or "").strip() or primera[:80] + ("…" if len(primera) > 80 else "")
         meta = {"tipo": tipo, "proyecto": proyecto, "fecha": ahora.strftime("%Y-%m-%dT%H:%M"),
                 "origen": origen, "tags": []}
-        ruta = escritor.ruta_unica(self.carpeta_para(proyecto, tipo), titulo, ".md", ahora)
+        carpeta = self.carpeta_proyectos / proyecto if proyecto else self.bandeja
+        ruta = escritor.ruta_unica(carpeta, titulo, ".md", ahora)
         escritor.escribir_atomico(ruta, escritor.con_frontmatter(meta, f"# {titulo}\n\n{texto}\n"))
         self.registrar_diario(f"Nota [[{ruta.stem}]]" + (f" en {proyecto}" if proyecto else ""))
         return ruta

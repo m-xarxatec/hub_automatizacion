@@ -7,10 +7,14 @@ laptop y el móvil. Todo corre en Docker: **el equipo donde se levanta es el ser
 ## Qué funciona hoy (días 1 y 2)
 
 - Bot con lista blanca de usuarios y modo configuración (te dice tu ID).
-- Proyectos con estructura completa de carpetas (`/proyecto nuevo Webtoon`).
-- Notas por tipo, tareas, nota del día y texto libre con botones de confirmación.
-- Imágenes como referencia; con un pie como *"referencia para Zamael"* se insertan en
-  `Historia/Personajes/Zamael.md` (y si no existe, ofrece crearla).
+- Proyectos sin esqueleto (`/proyecto nuevo Webtoon`): solo su carpeta y `_proyecto.md`; el bot
+  pregunta qué va dentro y las carpetas y archivos aparecen cuando hay algo que guardar.
+- Notas organizadas por el **redactor** (ChatGPT con el contenido real del proyecto): elige archivo y
+  sección, reparte un mensaje entre la historia y las fichas, enlaza personajes, avisa de
+  contradicciones y pregunta si falta algo. Lo concreto (tareas, diario, cambiar de proyecto, estado,
+  limpiar, diagnóstico) lo resuelve el router local sin tokens.
+- Imágenes como referencia; con un pie como *"referencia para Zamael"* se insertan en su ficha
+  (`Personajes/Zamael.md`; si no existe, ofrece crearla).
 - Latido del servidor, bloqueo si otro equipo ya está activo (error 409 de Telegram).
 - Limpieza diaria de temporales, registros en JSON, estado en SQLite.
 - Ollama con Qwen2.5 3B **dormido**: no arranca con el stack para no competir por recursos con la

@@ -95,7 +95,7 @@ def test_flujo_proyecto_nota_tarea(tmp_path, cfg, boveda):
     _run(dp, bot, _msg("/proyecto nuevo Webtoon"), _msg("/nota idea: villana con máscara"),
          _msg("tengo que terminar el storyboard"), _msg("/tareas"))
     textos = _textos(sesion)
-    assert "Proyecto Webtoon listo" in textos[0]
+    assert "Proyecto Webtoon creado y activo" in textos[0] and "¿De qué trata Webtoon" in textos[0]
     assert "Nota (idea) agregada a Proyectos/Webtoon/Ideas.md" in textos[1]
     assert "Tarea agregada a Proyectos/Webtoon/tareas.md" in textos[2]
     assert "1. terminar el storyboard" in textos[3]
@@ -119,11 +119,11 @@ def test_imagen_referencia_personaje(tmp_path, cfg, boveda):
     pregunta = sesion.enviados[-1]
     assert "zamael no tiene nota en Webtoon" in pregunta.text
     _run(dp, bot, _boton(pregunta.reply_markup.inline_keyboard[0][0].callback_data))
-    assert "insertada en Proyectos/Webtoon/Historia/Personajes/Zamael.md" in _textos(sesion)[-1]
+    assert "insertada en Proyectos/Webtoon/Personajes/Zamael.md" in _textos(sesion)[-1]
     # Segunda imagen: ya existe la nota, se inserta directo.
     _run(dp, bot, _msg(None, photo=foto, caption="referencia para Zamael"))
     assert "insertada en" in _textos(sesion)[-1]
-    nota = (boveda.carpeta_proyectos / "Webtoon/Historia/Personajes/Zamael.md").read_text(encoding="utf-8")
+    nota = (boveda.carpeta_proyectos / "Webtoon/Personajes/Zamael.md").read_text(encoding="utf-8")
     assert nota.count("![[") == 2
 
 
@@ -346,8 +346,8 @@ def test_nota_de_voz_con_orden_directa(tmp_path, cfg, boveda):
     _run(dp, bot, _voz(ctx, "Nota idea, la villana usa una máscara de zorro."))
     # Espejo: si el usuario habla, el bot responde solo con voz, sin rutas.
     assert _textos(sesion) == []
-    assert ctx.voz.hablados == ["Proyecto Webtoon listo con sus carpetas. Es el proyecto activo.",
-                                "Nota agregada a Ideas"]
+    assert ctx.voz.hablados == ["Proyecto Webtoon creado y activo. ¿De qué trata Webtoon o qué quieres "
+                                "guardar primero?", "Nota agregada a Ideas"]
     assert len(_voces(sesion)) == 2
     ideas = (boveda.carpeta_proyectos / "Webtoon" / "Ideas.md").read_text(encoding="utf-8")
     assert "· voz\n\nla villana usa una máscara de zorro" in ideas
@@ -403,7 +403,7 @@ def test_notas_se_acumulan_y_archivo_aparte_solo_si_se_pide(tmp_path, cfg, boved
     ideas = (webtoon / "Ideas.md").read_text(encoding="utf-8")
     assert ideas.count("\n## ") == 2 and "el mercado flota" in ideas and "los barcos son peces" in ideas
     assert "archivo propio" in _textos(sesion)[-1]
-    propio = list((webtoon / "Ideas").glob("*.md"))   # solo el que se pidió aparte
+    propio = [p for p in webtoon.glob("*.md") if "templo" in p.name]   # solo el que se pidió aparte
     assert len(propio) == 1 and "templo-en-ruinas" in propio[0].name
     assert "# El templo en ruinas" in propio[0].read_text(encoding="utf-8")
 
@@ -412,12 +412,13 @@ def test_personaje_con_nombre_y_notas_que_lo_nombran(tmp_path, cfg, boveda):
     ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
     _run(dp, bot, _msg("/proyecto nuevo Webtoon"),
          _msg("Crea un personaje llamado Bruno que sea carnicero"))
-    assert "Personaje Bruno creado en Proyectos/Webtoon/Historia/Personajes/Bruno.md" in _textos(sesion)[-1]
+    assert "Personaje Bruno creado en Proyectos/Webtoon/Personajes/Bruno.md" in _textos(sesion)[-1]
     _run(dp, bot, _msg("/nota Bruno usa un gancho de carne"))
     assert "ficha de Bruno" in _textos(sesion)[-1]
-    ficha = (boveda.carpeta_proyectos / "Webtoon/Historia/Personajes/Bruno.md").read_text(encoding="utf-8")
-    assert "## Descripción\n\nCarnicero." in ficha
-    assert "(texto): Bruno usa un gancho de carne\n\n## Referencias visuales" in ficha
+    ficha = (boveda.carpeta_proyectos / "Webtoon/Personajes/Bruno.md").read_text(encoding="utf-8")
+    assert "# Bruno\n\nCarnicero.\n" in ficha and "## Descripción" not in ficha   # sin esqueleto
+    assert ficha.endswith("## Notas\n\n- " + ficha.split("## Notas\n\n- ")[1])
+    assert "(texto): Bruno usa un gancho de carne\n" in ficha.split("## Notas")[1]
     # Pedirlo otra vez no pisa la ficha: la descripción va a sus notas.
     _run(dp, bot, _msg("Nuevo personaje: Bruno, tiene una cicatriz"))
     assert "Bruno ya tenía ficha; agregué la descripción" in _textos(sesion)[-1]
@@ -430,7 +431,7 @@ def test_personaje_sin_nombre_pregunta_y_usa_la_respuesta(tmp_path, cfg, boveda)
     assert ctx.voz.hablados[-1] == "¿Cómo se llama el personaje?"
     _run(dp, bot, _voz(ctx, "El nombre del personaje será Bruno."))
     assert ctx.voz.hablados[-1] == "Personaje Bruno creado"
-    ficha = (boveda.carpeta_proyectos / "Webtoon/Historia/Personajes/Bruno.md").read_text(encoding="utf-8")
+    ficha = (boveda.carpeta_proyectos / "Webtoon/Personajes/Bruno.md").read_text(encoding="utf-8")
     assert "Un carnicero que use un gancho de carne." in ficha
     assert not ctx.esperando_nombre
 
@@ -561,7 +562,7 @@ def test_ia_crea_la_ficha_del_personaje(tmp_path, cfg, boveda):
     _run(dp, bot, _msg("/proyecto nuevo Webtoon"),
          _msg("Dentro de personajes vamos a crear una elfa albina de ojos rojos llamada Aeli"))
     assert "Personaje Aeli creado" in _textos(sesion)[-1]
-    ficha = (boveda.carpeta_proyectos / "Webtoon" / "Historia" / "Personajes" / "Aeli.md").read_text(encoding="utf-8")
+    ficha = (boveda.carpeta_proyectos / "Webtoon" / "Personajes" / "Aeli.md").read_text(encoding="utf-8")
     assert "Elfa albina de ojos rojos." in ficha
 
 
@@ -732,7 +733,7 @@ def test_analisis_por_voz_responde_con_frases_cortas(tmp_path, cfg, boveda):
     _run(dp, bot, _voz(ctx, "Analiza si el ritmo del arco 2 es muy lento."))
     if "¿Es un pedido de análisis?" in ctx.voz.hablados[-1]:      # el router pudo dudar
         _run(dp, bot, _boton(_boton_con(sesion, "o:analisis:"), voz=True))
-    assert ctx.voz.hablados[-1].startswith("Voy a analizar 3 notas de Webtoon")
+    assert ctx.voz.hablados[-1].startswith("Voy a analizar 2 notas de Webtoon")   # sin tareas.md vacío
     _run(dp, bot, _boton(_boton_con(sesion, "an:0:"), voz=True))
     assert ctx.voz.hablados[-1] == "Elige el esfuerzo del modelo en los botones."
     assert isinstance(_con_botones(sesion), SendVoice)   # la voz lleva los botones de esfuerzo

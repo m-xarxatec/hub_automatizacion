@@ -40,8 +40,9 @@ def test_estructura_base_y_stignore(boveda):
 def test_crear_proyecto_y_buscar_por_nombre_o_alias(boveda):
     nombre = boveda.crear_proyecto("Webtoon")
     carpeta = boveda.carpeta_proyectos / nombre
-    assert (carpeta / "Historia" / "Personajes").is_dir()
-    assert (carpeta / "_proyecto.md").exists() and (carpeta / "tareas.md").exists()
+    # Sin esqueleto: solo el índice; carpetas y archivos aparecen cuando hay algo que guardar.
+    assert [p.name for p in carpeta.iterdir()] == ["_proyecto.md"]
+    assert (carpeta / "_proyecto.md").read_text(encoding="utf-8").endswith("---\n# Webtoon\n")
     assert boveda.buscar_proyecto("webtoon") == "Webtoon"
     indice = carpeta / "_proyecto.md"
     indice.write_text(indice.read_text().replace("aliases: []", "aliases: [cómic oscuro]"))
@@ -69,7 +70,7 @@ def test_nota_aparte_crea_archivo_unico(boveda):
     boveda.crear_proyecto("Webtoon")
     a = boveda.guardar_nota("Zamael no confía en nadie", "Webtoon", tipo="historia", aparte=True)
     b = boveda.guardar_nota("Zamael no confía en nadie", "Webtoon", tipo="historia", aparte=True)
-    assert a != b and a.parent == boveda.carpeta_proyectos / "Webtoon" / "Historia"
+    assert a != b and a.parent == boveda.carpeta_proyectos / "Webtoon"   # en la raíz del proyecto
     assert a.read_text(encoding="utf-8").startswith("---\ntipo: historia\nproyecto: Webtoon")
 
 

@@ -1,26 +1,28 @@
 """Bot de Telegram: entrada principal del hub.
 
-Implementado: lista blanca, /estado, /proyecto, /nota, /tarea, /tareas, /nuevo,
+Implementado: lista blanca, /estado, /proyecto, /nota, /tarea, /tareas, /diario, /nuevo,
 /limpiar, texto libre con botones, respuesta en espejo (voz -> voz con Kokoro, paso C),
 referencias de imagen (incluida la referencia de
 personaje), /reentrenar (día 3), /img y /diagnostico (día 4), consultas por OpenClaw con
 /consulta o texto libre (día 5, con historial corto; /nuevo lo reinicia), modo análisis con
-/analisis o texto libre (confirmación por botones, decisión 4) y /modelo. Las notas se acumulan
-por tipo (Ideas.md, Historia.md…) o en la ficha del personaje nombrado; archivo propio
-solo si se pide. "Crea un personaje…" crea su ficha y pregunta el nombre si falta. El resto de acciones
-responde en qué día llegan y ofrece guardar el contenido como nota para no perderlo.
+/analisis o texto libre (confirmación por botones, decisión 4) y /modelo.
+Desde el 2026-09-30: lo concreto (órdenes de frase fija, por texto o voz) va al router local; lo que
+hay que guardar lo organiza el redactor (acciones/redactor.py) con el contenido real del proyecto.
+Sin esqueletos: un proyecto nuevo es su carpeta y _proyecto.md, y el bot pregunta qué va dentro.
+Si GPT no responde, las notas se acumulan por tipo (Ideas.md, Historia.md…) como antes.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import secrets
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 import httpx
 from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
@@ -33,8 +35,10 @@ from aiogram.types import (BotCommand, BufferedInputFile, CallbackQuery, InlineK
 from ..acciones import analisis
 from ..acciones import consulta as consultas
 from ..acciones import notas, personajes, referencias
+from ..acciones import redactor as redaccion
 from ..acciones.imagenes import GeneradorImagenes
 from ..ajustes import Ajustes
+from ..boveda import escritor
 from ..boveda.proyectos import Boveda
 from ..estado import limpieza
 from ..estado.db import Estado
@@ -51,8 +55,13 @@ from ..voz.cliente import ClienteVoz, ErrorVoz, para_hablar
 log = logging.getLogger(__name__)
 
 PENDIENTE_TTL_S = 600
-# Lo último que hizo el bot en cada chat ("esa imagen no me gusta", "no ahí, ponla en X") vale este tiempo.
+# Lo último que hizo el bot en cada chat ("esa imagen no me gusta", "no ahí, ponla en X", "anota esto")
+# vale este tiempo. Se recuerdan las últimas ULTIMAS acciones: "anota esto" puede referirse a una
+# consulta de hace dos mensajes (consulta, crear proyecto, "anota esto dentro del proyecto").
 ULTIMA_TTL_S = 1800
+ULTIMAS = 3
+# De la respuesta de una consulta se recuerda hasta este largo (para "anota esa idea").
+RESPUESTA_RECORDADA = 3000
 # Por debajo de esta confianza del intérprete se pregunta con botones en vez de ejecutar.
 CONFIANZA_INTERPRETE = 0.6
 # Respuesta en espejo (decisión 9): True mientras se atiende una nota de voz, o un botón
@@ -68,13 +77,13 @@ SIN_IMAGENES = ("En este momento no se pueden generar imágenes, revisa los logs
 
 AYUDA = """Comandos disponibles:
 /proyecto  ver o elegir el proyecto activo
-/proyecto nuevo <nombre>  crear proyecto con sus carpetas
+/proyecto nuevo <nombre>  crear un proyecto (solo su carpeta; te pregunto qué va dentro)
 /proyecto ninguno  guardar en 00-Bandeja
-/nota [tipo:] <texto>  tipos: idea, historia, produccion, dialogo
-/nota aparte: <texto>  en un archivo propio
+/nota <texto>  guardar una nota (yo decido dónde va dentro del proyecto)
 /tarea <texto>  agregar pendiente
 /tareas  ver pendientes del proyecto
-/consulta <pregunta>  responder con ChatGPT (o Claude si falla)
+/diario <texto>  anotar en el diario de hoy
+/consulta <pregunta>  responder con ChatGPT (o Claude si falla), leyendo tus notas
 /analisis <pedido>  análisis a fondo de las notas del proyecto con un modelo grande
     (antes muestro notas y tokens y eliges el modelo)
 /modelo  elegir el modelo de análisis predeterminado
@@ -85,20 +94,21 @@ AYUDA = """Comandos disponibles:
 /limpiar  borrar temporales (/limpiar simular para ver qué borraría)
 /reentrenar  entrenar el router con tus correcciones y lo que decidió la IA
 
-También puedes escribir o hablar sin comando: ChatGPT entiende qué quieres y dónde va.
-- "Anota en la ficha de Karito que tiene 200 años" -> en su ficha, sin la orden.
-- "Quiero que anotes en el archivo referencia elfa…" -> en ese archivo.
+Sin comando, escribe o habla normal. Lo concreto lo resuelvo al instante:
+"tarea: comprar tinta", "dime mis tareas", "anota en mi diario que…", "cambia al proyecto X",
+"estado", "diagnóstico", "limpia los temporales", "ayuda".
+Lo demás lo entiende ChatGPT y lo organiza en tu bóveda: elige el archivo y la sección, reparte un
+mensaje entre la historia y las fichas, enlaza a los personajes y te avisa si algo contradice lo
+escrito. Solo crea archivos, carpetas o fichas cuando hay algo que poner en ellos:
+- "Kael es un cazador de monstruos que perdona a Aely" -> ficha de Kael, ficha de Aely e historia.
+- "Crea dentro del proyecto un archivo Mundo y anota que…" -> Mundo.md con eso.
+- "Crea un personaje" (sin nombre) -> te pregunto cómo se llama.
 - "No ahí, ponla en X" -> copio la última nota a X (la anterior no se borra).
 - "Esa imagen no me gusta, hazla estilo anime" -> rehago la última imagen.
-- "Crea un personaje llamado Bruno que sea carnicero" -> su ficha (si falta el nombre, pregunto).
-Sin indicar lugar, las notas van a Ideas.md, Historia.md o Produccion.md del proyecto.
-Si ChatGPT no responde, decide el router local; lo que elijas con los botones se guarda
-como ejemplo para el próximo /reentrenar.
-Envía una imagen con un pie como "referencia para Zamael" y se inserta en su nota.
-Las imágenes generadas se llaman elfa1, elfa2…; para nombrarla: "la imagen que se acaba de
-crear será el personaje Aeli".
-Envía una nota de voz: se transcribe en local y puedes dar órdenes como
-"nota idea, …", "tarea: …", "cambia al proyecto Webtoon" o "genera una imagen de …".
+- "Así será Aely" (tras una imagen) -> la renombro y la pongo en su ficha.
+Nunca borro ni reescribo lo que escribiste: solo agrego. Si ChatGPT no responde, guardo la nota por
+tipo (Ideas.md, Historia.md…) y lo que elijas con los botones queda para el próximo /reentrenar.
+Envía una imagen con un pie como "referencia para Zamael" y se inserta en su ficha.
 Si me hablas, respondo con voz; si escribes, con texto."""
 
 COMANDOS = [
@@ -106,6 +116,7 @@ COMANDOS = [
     ("nota", "Guardar una nota"),
     ("tarea", "Agregar un pendiente"),
     ("tareas", "Ver pendientes"),
+    ("diario", "Anotar en el diario de hoy"),
     ("consulta", "Preguntar a ChatGPT"),
     ("analisis", "Analizar las notas del proyecto"),
     ("modelo", "Elegir el modelo de análisis"),
@@ -130,21 +141,26 @@ class Contexto:
     voz: ClienteVoz | None = None
     openclaw: OpenClaw | None = None
     interprete: Interprete | None = None
+    redactor: redaccion.Redactor | None = None
     inicio: float = field(default_factory=time.time)
     pendientes: dict[str, dict[str, Any]] = field(default_factory=dict)
     # chat -> clave del pendiente de un personaje al que le falta el nombre
     esperando_nombre: dict[int, str] = field(default_factory=dict)
-    # chat -> lo último que hizo el bot (contexto para el intérprete)
-    ultima: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # chat -> lo último que hizo el bot, lo más reciente primero (contexto para intérprete y redactor)
+    ultima: dict[int, list[dict[str, Any]]] = field(default_factory=dict)
+
+    def _vigentes(self, chat: int) -> list[dict[str, Any]]:
+        return [u for u in self.ultima.get(chat, []) if u["hora"] >= time.time() - ULTIMA_TTL_S]
 
     def recordar(self, chat: int, **datos: Any) -> None:
-        self.ultima[chat] = {**datos, "hora": time.time()}
+        self.ultima[chat] = ([{**datos, "hora": time.time()}] + self._vigentes(chat))[:ULTIMAS]
 
     def ultima_de(self, chat: int) -> dict[str, Any] | None:
-        u = self.ultima.get(chat)
-        if not u or u["hora"] < time.time() - ULTIMA_TTL_S:
+        """La última acción, con las anteriores en "anteriores" (si las hay)."""
+        vigentes = [{k: v for k, v in u.items() if k != "hora"} for u in self._vigentes(chat)]
+        if not vigentes:
             return None
-        return {k: v for k, v in u.items() if k != "hora"}
+        return {**vigentes[0], "anteriores": vigentes[1:]} if len(vigentes) > 1 else vigentes[0]
 
     def guardar_pendiente(self, **datos: Any) -> str:
         """Guarda datos para un botón. `ttl` (segundos) cambia la caducidad por defecto."""
@@ -301,6 +317,67 @@ def crear_router(ctx: Contexto) -> Router:
             log.exception("Error escribiendo en la bóveda")
             return f"No pude escribir en la bóveda: {e}"
 
+    @contextlib.asynccontextmanager
+    async def escribiendo(bot: Bot, chat: int) -> AsyncIterator[None]:
+        """Mantiene "escribiendo…" en Telegram mientras trabaja un modelo lento (el aviso dura 5 s)."""
+        accion = "record_voice" if _hablado.get() else "typing"
+
+        async def repetir() -> None:
+            while True:
+                await asyncio.sleep(4)
+                with contextlib.suppress(Exception):
+                    await bot.send_chat_action(chat, accion)
+        with contextlib.suppress(Exception):   # el primero, ya: aunque el modelo responda enseguida
+            await bot.send_chat_action(chat, accion)
+        tarea_aviso = asyncio.create_task(repetir())
+        try:
+            yield
+        finally:
+            tarea_aviso.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await tarea_aviso
+
+    async def redactar(bot: Bot, chat: int, texto: str, origen: str, pista: dict[str, Any] | None = None,
+                       respaldo: Callable[[], Awaitable[None]] | None = None) -> None:
+        """El redactor (LLM) decide qué escribir y dónde. Si no responde, o su propuesta deja fuera
+        parte del mensaje, se guarda como antes: `respaldo` o la nota por tipo."""
+        proyecto = ctx.estado.proyecto_activo(chat)
+        pista = {k: v for k, v in (pista or {}).items() if v}
+        plan = None
+        if ctx.redactor is not None:
+            async with escribiendo(bot, chat):
+                try:
+                    plan = await ctx.redactor.planear(ctx.boveda, texto, proyecto, origen, ctx.ultima_de(chat), pista)
+                except redaccion.SinCobertura as e:
+                    log.warning("Redactor: propuesta descartada (%s); se guarda el mensaje tal cual", e)
+        if plan is None:
+            if respaldo is not None:
+                await respaldo()
+            else:
+                await decir(bot, chat, ejecutar("nota", texto, pista.get("tipo") or tipo_nota(texto), chat, origen))
+            return
+        if not plan.operaciones:
+            # Falta algo (el nombre del personaje…): la respuesta llega como mensaje normal y el
+            # intérprete y el redactor la unen a este gracias a ultima_accion.
+            ctx.recordar(chat, accion="pregunta", pregunta=plan.pregunta, mensaje=texto)
+            await decir(bot, chat, plan.pregunta)
+            return
+        try:
+            rutas = redaccion.aplicar(ctx.boveda, plan, proyecto, origen)
+        except (OSError, ValueError) as e:
+            log.exception("Error escribiendo en la bóveda")
+            await decir(bot, chat, f"No pude escribir en la bóveda: {e}")
+            return
+        log.info("Redactor: %s en %d archivos%s", ", ".join(op.op for op in plan.operaciones), len(rutas),
+                 f", {len(plan.avisos)} avisos" if plan.avisos else "")
+        ctx.recordar(chat, accion="nota", archivo=ctx.relativa(rutas[0]),
+                     archivos=[ctx.relativa(r) for r in rutas], contenido=texto, pregunta=plan.pregunta)
+        mensaje = redaccion.resumen(plan, rutas, ctx.relativa)
+        hablado = redaccion.resumen_hablado(plan)
+        if plan.pregunta:
+            mensaje, hablado = f"{mensaje}\n{plan.pregunta}", f"{hablado} {plan.pregunta}"
+        await decir(bot, chat, mensaje, voz=hablado)
+
     async def guardar_referencia(bot: Bot, chat_id: int, file_id: str, ext: str, pie: str) -> str:
         proyecto = ctx.estado.proyecto_activo(chat_id)
         datos = await _descargar(bot, file_id)
@@ -448,8 +525,7 @@ def crear_router(ctx: Contexto) -> Router:
             except ValueError as e:
                 await decir(m.bot, m.chat.id, str(e))
                 return
-            ctx.estado.fijar_proyecto(chat, creado)
-            await decir(m.bot, m.chat.id, f"Proyecto {creado} listo con sus carpetas. Es el proyecto activo.")
+            await decir(m.bot, m.chat.id, proyecto_nuevo(chat, creado))
             return
         encontrado = ctx.boveda.buscar_proyecto(arg)
         if encontrado:
@@ -460,16 +536,46 @@ def crear_router(ctx: Contexto) -> Router:
         await decir(m.bot, m.chat.id, f"No existe el proyecto «{arg}». ¿Lo creo?",
                        reply_markup=teclado([[("Crear", f"np:{clave}"), ("Cancelar", f"x:{clave}")]]))
 
+    def proyecto_nuevo(chat: int, creado: str) -> str:
+        """Activa el proyecto recién creado y pregunta qué va dentro (no se crea nada más)."""
+        ctx.estado.fijar_proyecto(chat, creado)
+        pregunta = f"¿De qué trata {creado} o qué quieres guardar primero?"
+        ctx.recordar(chat, accion="pregunta", pregunta=pregunta, proyecto_nuevo=creado)
+        return f"Proyecto {creado} creado y activo (por ahora solo su carpeta y _proyecto.md). {pregunta}"
+
     @r.message(Command("nota"))
     async def nota_cmd(m: Message, command: CommandObject) -> None:
         await nota(m, command.args or "")
 
     async def nota(m: Message, args: str, origen: str = "telegram") -> None:
+        """/nota y "nota idea, …": con redactor, él decide dónde; sin él, por tipo."""
         tipo, texto = separar_tipo(args, tipos)
         if not texto:
             await decir(m.bot, m.chat.id, "Uso: /nota [idea:] texto de la nota")
             return
+        if ctx.redactor is not None:
+            explicito = texto != (args or "").strip()   # "/nota idea: …": el tipo lo dijo el usuario
+            await redactar(m.bot, m.chat.id, texto, origen, {"accion": "nota", "tipo": tipo if explicito else ""})
+            return
         await decir(m.bot, m.chat.id, ejecutar("nota", texto, tipo, m.chat.id, origen))
+
+    @r.message(Command("diario"))
+    async def diario_cmd(m: Message, command: CommandObject) -> None:
+        await diario(m, command.args or "")
+
+    async def diario(m: Message, texto: str) -> None:
+        texto = " ".join((texto or "").split())
+        if not texto:
+            await decir(m.bot, m.chat.id, "Uso: /diario lo que quieres anotar hoy")
+            return
+        try:
+            ruta = ctx.boveda.registrar_diario(texto)
+        except OSError as e:
+            log.exception("Error escribiendo el diario")
+            await decir(m.bot, m.chat.id, f"No pude escribir en el diario: {e}")
+            return
+        await decir(m.bot, m.chat.id, f"Anotado en el diario de hoy ({ctx.relativa(ruta)}).",
+                    voz="Anotado en tu diario.")
 
     @r.message(Command("tarea"))
     async def tarea_cmd(m: Message, command: CommandObject) -> None:
@@ -497,12 +603,18 @@ def crear_router(ctx: Contexto) -> Router:
 
     @r.message(Command("nuevo"))
     async def nuevo_cmd(m: Message) -> None:
+        await nuevo(m)
+
+    async def nuevo(m: Message) -> None:
         ctx.estado.nueva_sesion(m.chat.id)
+        ctx.ultima.pop(m.chat.id, None)
         await decir(m.bot, m.chat.id, "Contexto reiniciado. La próxima consulta empieza desde cero.")
 
     @r.message(Command("limpiar"))
     async def limpiar_cmd(m: Message, command: CommandObject) -> None:
-        simular = any(p in (command.args or "") for p in ("simular", "que-borraria", "que_borraria"))
+        await limpiar(m, any(p in (command.args or "") for p in ("simular", "que-borraria", "que_borraria")))
+
+    async def limpiar(m: Message, simular: bool) -> None:
         rutas = await asyncio.to_thread(limpieza.limpiar, ctx.ajustes.datos, ctx.boveda.raiz,
                                         ctx.config.get("limpieza", {}), simular)
         if not rutas:
@@ -589,19 +701,35 @@ def crear_router(ctx: Contexto) -> Router:
         if nota is None:
             await decir(m.bot, m.chat.id, f"No encontré imágenes generadas en {destino(m.chat.id)}.")
             return
+        proyecto = ctx.estado.proyecto_activo(m.chat.id)
+        hallado = referencias.buscar_personaje(ctx.boveda, nombre, proyecto) if proyecto else None
         try:
             nueva = ctx.imagenes.renombrar(nota, nombre)
+            if hallado:   # "así será Aely": la imagen queda también en su ficha
+                imagen = nueva.with_name(str(escritor.leer_frontmatter(nueva).get("imagen") or ""))
+                if imagen.is_file():
+                    referencias.insertar_en_personaje(hallado[1], imagen)
+                else:
+                    hallado = None
         except OSError as e:
             log.exception("Error renombrando la imagen")
             await decir(m.bot, m.chat.id, f"No pude renombrar la imagen: {e}")
             return
-        await decir(m.bot, m.chat.id, f"Listo: la imagen {nota.stem} ahora se llama {nueva.stem}.",
-                    voz=f"Listo, la imagen ahora se llama {nombre}.")
+        extra = f" y quedó en la ficha de {hallado[1].stem}" if hallado else ""
+        await decir(m.bot, m.chat.id, f"Listo: la imagen {nota.stem} ahora se llama {nueva.stem}{extra}.",
+                    voz=f"Listo, la imagen ahora se llama {nombre}" + (" y está en su ficha." if hallado else "."))
 
     async def consultar(bot: Bot, chat: int, pregunta: str) -> None:
-        await bot.send_chat_action(chat, "typing")
-        await decir(bot, chat, await consultas.responder(ctx.openclaw, ctx.estado, chat, pregunta,
-                                                         ctx.ajustes.zona, breve=_hablado.get()))
+        proyecto = ctx.estado.proyecto_activo(chat)
+        tope = int(ctx.config.get("proveedores", {}).get("consulta_notas_tokens") or 0)
+        notas_p = consultas.notas_del_proyecto(ctx.boveda, proyecto, pregunta, tope)
+        async with escribiendo(bot, chat):
+            respuesta = await consultas.responder(ctx.openclaw, ctx.estado, chat, pregunta, ctx.ajustes.zona,
+                                                  breve=_hablado.get(), notas=notas_p, proyecto=proyecto)
+        if respuesta != consultas.SIN_RESPUESTA:   # "anota esa idea" se refiere a esta respuesta
+            ctx.recordar(chat, accion="consulta", pregunta=pregunta[:500],
+                         respuesta=respuesta[:RESPUESTA_RECORDADA])
+        await decir(bot, chat, respuesta)
 
     @r.message(Command("consulta"))
     async def consulta_cmd(m: Message, command: CommandObject, bot: Bot) -> None:
@@ -714,6 +842,9 @@ def crear_router(ctx: Contexto) -> Router:
 
     @r.message(Command("modelo"))
     async def modelo_cmd(m: Message) -> None:
+        await modelo(m)
+
+    async def modelo(m: Message) -> None:
         opciones = analisis.opciones_desde_config(ctx.config)
         actual = modelo_analisis(m.chat.id)
         if not opciones or actual is None:
@@ -734,6 +865,9 @@ def crear_router(ctx: Contexto) -> Router:
 
     @r.message(Command("diagnostico"))
     async def diagnostico_cmd(m: Message) -> None:
+        await diagnostico(m)
+
+    async def diagnostico(m: Message) -> None:
         if ctx.imagenes is None:
             await decir(m.bot, m.chat.id, "La generación de imágenes no está configurada.")
             return
@@ -800,39 +934,57 @@ def crear_router(ctx: Contexto) -> Router:
             await decir(m.bot, m.chat.id, "No entendí nada en la nota de voz. ¿Puedes repetirla?")
             return
         log.info("Nota de voz transcrita (%d caracteres)", len(texto))
-        await procesar_hablado(m, bot, texto)
+        await procesar(m, bot, texto, "voz")
 
-    async def procesar_hablado(m: Message, bot: Bot, texto: str) -> None:
-        """Órdenes rígidas (prefijo fijo: "nota idea, …", "cambia al proyecto X") en local;
-        el resto lo interpreta GPT y, si no responde, el router local."""
-        if await orden_rigida(m, texto, "voz"):
+    async def procesar(m: Message, bot: Bot, texto: str, origen: str) -> None:
+        """Texto o voz sin comando. Primero lo concreto, en local y sin tokens: la respuesta a una
+        pregunta del bot, nombrar la imagen y las órdenes de frase fija ("tarea: …", "dime mis
+        tareas", "anota en mi diario…", "cambia al proyecto X", "estado"…). Lo demás lo entiende
+        GPT (intérprete) y lo escribe el redactor; si GPT no responde, el router local."""
+        if await orden_rigida(m, texto, origen):
             return
         orden = orden_hablada(texto)
         # Con intérprete, "genera una imagen…" y "crea un archivo…" van a GPT: entiende el
         # personaje y el destino. Sin él, siguen siendo órdenes directas.
         if orden and ctx.interprete and (orden[0] == "img" or archivo_aparte(texto)):
             orden = None
-        if orden is None:
-            if await por_interprete(m, bot, texto, "voz"):
-                return
-            if await orden_directa(m, texto, "voz"):
-                return
-            await resolver(m, bot, await ctx.router.decidir(texto, sin_ia=ctx.interprete is not None),
-                           texto, origen="voz")
+        if orden is not None:
+            await ejecutar_orden(m, bot, orden, origen)
             return
+        if await por_interprete(m, bot, texto, origen):
+            return
+        if await orden_directa(m, texto, origen):
+            return
+        await resolver(m, bot, await ctx.router.decidir(texto, sin_ia=ctx.interprete is not None),
+                       texto, origen=origen)
+
+    async def ejecutar_orden(m: Message, bot: Bot, orden: tuple[str, str], origen: str) -> None:
         comando, args = orden
+        log.info("Mensaje (%s): orden directa %s", origen, comando)
         if comando == "proyecto":
             await proyecto(m, args)
         elif comando == "nota":
-            await nota(m, args, origen="voz")
+            await nota(m, args, origen=origen)
         elif comando == "tarea":
-            await tarea(m, args, origen="voz")
+            await tarea(m, args, origen=origen)
         elif comando == "tareas":
             await tareas(m)
         elif comando == "estado":
             await estado(m)
         elif comando == "img":
             await generar_imagen(bot, m.chat.id, args)
+        elif comando == "diario":
+            await diario(m, args)
+        elif comando == "limpiar":
+            await limpiar(m, simular=False)
+        elif comando == "diagnostico":
+            await diagnostico(m)
+        elif comando == "modelo":
+            await modelo(m)
+        elif comando == "ayuda":
+            await decir(bot, m.chat.id, AYUDA, voz="Mira la lista de comandos con barra ayuda.")
+        elif comando == "nuevo":
+            await nuevo(m)
 
     @r.message(F.text.startswith("/"))
     async def comando_desconocido(m: Message) -> None:
@@ -841,12 +993,7 @@ def crear_router(ctx: Contexto) -> Router:
     # --- texto libre ------------------------------------------------------------
     @r.message(F.text)
     async def texto_libre(m: Message, bot: Bot) -> None:
-        if await orden_rigida(m, m.text, "telegram") or await por_interprete(m, bot, m.text, "telegram"):
-            return
-        if await orden_directa(m, m.text, "telegram"):
-            return
-        decision = await ctx.router.decidir(m.text, sin_ia=ctx.interprete is not None)
-        await resolver(m, bot, decision, m.text)
+        await procesar(m, bot, m.text, "telegram")
 
     # --- intérprete con GPT (prioridad) -------------------------------------------
     async def por_interprete(m: Message, bot: Bot, texto: str, origen: str) -> bool:
@@ -895,7 +1042,12 @@ def crear_router(ctx: Contexto) -> Router:
         contenido = i.contenido or texto
         try:
             if i.accion == "nota":
-                await decir(bot, chat, guardar_interpretada(chat, contenido, i, fichas, origen, proyecto))
+                async def respaldo_nota() -> None:
+                    await decir(bot, chat, guardar_interpretada(chat, contenido, i, fichas, origen, proyecto))
+                destino = (f"personaje:{i.destino_personaje}" if i.destino_personaje
+                           else ctx.relativa(i.destino_archivo) if i.destino_archivo
+                           else f"nuevo:{i.destino_nuevo}" if i.destino_nuevo else "")
+                await redactar(bot, chat, texto, origen, {"accion": "nota", "destino": destino}, respaldo_nota)
             elif i.accion == "tarea":
                 ruta = ctx.boveda.agregar_tarea(limpiar_tarea(contenido), proyecto)
                 await decir(bot, chat, f"Tarea agregada a {ctx.relativa(ruta)}")
@@ -906,9 +1058,20 @@ def crear_router(ctx: Contexto) -> Router:
             elif i.accion == "analisis" and ctx.openclaw:
                 await pedir_analisis(bot, chat, texto)
             elif i.accion == "personaje":
-                await personaje(m, i.personaje or None, i.descripcion, texto, origen)
+                async def respaldo_personaje() -> None:
+                    await personaje(m, i.personaje or None, i.descripcion, texto, origen)
+                if proyecto:   # sin proyecto no hay fichas: personaje() pide elegir uno
+                    await redactar(bot, chat, texto, origen, {"accion": "personaje", "personaje": i.personaje},
+                                   respaldo_personaje)
+                else:
+                    await respaldo_personaje()
             elif i.accion == "proyecto":
-                await proyecto_por_voz(m, i)
+                await proyecto_por_voz(m, i, texto, origen)
+            elif i.accion == "nombrar_imagen":
+                if (i.personaje or i.nombre_imagen) and ctx.imagenes is not None:
+                    await nombrar_imagen(m, i.personaje or i.nombre_imagen)
+                else:
+                    await decir(bot, chat, "¿Qué nombre le pongo a la imagen?")
             elif i.accion == "mover_nota":
                 await mover_nota(bot, chat, i, fichas, origen, proyecto)
             else:   # búsqueda (fase 3) u otra que no esté disponible: pregunta con botones
@@ -959,9 +1122,19 @@ def crear_router(ctx: Contexto) -> Router:
                                "no la quieres ahí (yo no borro lo que escribes).",
                     voz="Listo, la puse donde me dijiste. La copia anterior sigue en su sitio.")
 
-    async def proyecto_por_voz(m: Message, i: Interpretacion) -> None:
+    async def proyecto_por_voz(m: Message, i: Interpretacion, texto: str, origen: str) -> None:
         if not i.proyecto:
             await proyecto(m, "")
+        elif i.crear and i.contenido and ctx.redactor is not None:
+            # "Crea el proyecto X, un webtoon de…": se crea y el redactor guarda lo que dijo de él.
+            try:
+                creado = ctx.boveda.crear_proyecto(i.proyecto)
+            except ValueError as e:
+                await decir(m.bot, m.chat.id, str(e))
+                return
+            ctx.estado.fijar_proyecto(m.chat.id, creado)
+            await decir(m.bot, m.chat.id, f"Proyecto {creado} creado y activo.", voz=f"Creé el proyecto {creado}.")
+            await redactar(m.bot, m.chat.id, texto, origen, {"accion": "proyecto_nuevo", "proyecto": creado})
         elif i.crear:
             await proyecto(m, f"nuevo {i.proyecto}")
         else:
@@ -1170,8 +1343,7 @@ def crear_router(ctx: Contexto) -> Router:
         except ValueError as e:
             await cerrar(c, str(e))
             return
-        ctx.estado.fijar_proyecto(p["chat"], creado)
-        await cerrar(c, f"Proyecto {creado} listo con sus carpetas. Es el proyecto activo.")
+        await cerrar(c, proyecto_nuevo(p["chat"], creado))
 
     @r.callback_query(F.data.startswith("r:"))
     async def cb_referencia(c: CallbackQuery) -> None:

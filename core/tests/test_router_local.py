@@ -265,3 +265,26 @@ def test_qwen_dormido_si_la_config_no_dice_nada(tmp_path):
     ruta.write_text("router: {umbral_ejecutar: 0.8}\n", encoding="utf-8")
     assert cargar(ruta)["proveedores"]["llm_local"]["activo"] is False
     assert cargar(None)["proveedores"]["llm_local"]["activo"] is False
+
+
+def test_ordenes_concretas_nuevas_y_frases_que_no_lo_son():
+    """Lo concreto va al router local (2026-09-30); frases parecidas no deben dispararlo."""
+    from app.router.reglas import orden_hablada
+    casos = {
+        "Anota en mi diario que hoy entinté tres páginas": ("diario", "hoy entinté tres páginas"),
+        "Anota esto en el diario: salió bien": ("diario", "salió bien"),
+        "diario: terminé el boceto": ("diario", "terminé el boceto"),
+        "Querido diario, hoy no dibujé": ("diario", "hoy no dibujé"),
+        "limpia los temporales": ("limpiar", ""),
+        "haz el diagnóstico de imágenes": ("diagnostico", ""),
+        "cambia el modelo": ("modelo", ""),
+        "qué puedes hacer": ("ayuda", ""),
+        "nueva conversación": ("nuevo", ""),
+        "dime mis tareas": ("tareas", ""),
+        "anota la tarea comprar tinta": ("tarea", "comprar tinta"),
+    }
+    for frase, esperado in casos.items():
+        assert orden_hablada(frase) == esperado, frase
+    for frase in ("la tarea de hoy fue difícil", "el diario de Kael dice que miente",
+                  "el modelo del personaje es raro", "hay que limpiar la escena del bosque"):
+        assert orden_hablada(frase) is None, frase

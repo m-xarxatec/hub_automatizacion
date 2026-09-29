@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,20 +31,24 @@ log = logging.getLogger(__name__)
 ACCIONES = {
     "nota": "guardar una idea, dato, escena, diálogo o descripción",
     "tarea": "algo que el autor tiene que hacer (pendiente, recordatorio)",
-    "consulta": "pregunta general o charla que no necesita leer sus notas",
-    "analisis": "opinión o revisión de SU historia o proyecto (hay que leer sus notas)",
+    "consulta": "pregunta o charla, también sobre sus notas (\"¿y la historia?\", \"¿cómo se llama la elfa?\"): "
+                "se responde leyendo sus notas",
+    "analisis": "revisión a fondo con un modelo grande: solo si pide analizar, revisar, evaluar o buscar "
+                "problemas en su historia o proyecto",
     "imagen": "generar una imagen nueva",
     "rehacer_imagen": "cambiar o repetir la última imagen",
     "busqueda": "buscar en internet",
     "personaje": "crear un personaje nuevo",
     "proyecto": "crear o cambiar de proyecto",
     "mover_nota": "corregir dónde quedó la última nota",
+    "nombrar_imagen": "nombrar la última imagen o decir de qué personaje es (\"así será Aely\" tras una imagen)",
 }
 # Lo que aprende SetFit de cada acción de GPT (las demás no tienen etiqueta en el clasificador).
 PARA_SETFIT = {"nota": "nota", "tarea": "tarea", "consulta": "consulta", "imagen": "imagen",
                "rehacer_imagen": "imagen", "analisis": "analisis", "busqueda": "busqueda"}
 TIPOS = ("idea", "historia", "produccion", "dialogo", "general")
 MAX_ARCHIVOS = 40
+REINTENTO_SI_FALLA_ANTES_DE_S = 15
 MAX_PERSONAJES = 20
 
 SISTEMA = """Interpretas mensajes (a veces voz transcrita con errores: "Carito" puede ser "Karito" de la
@@ -61,6 +66,10 @@ personaje), idea (ocurrencia suelta que aún no encaja), general (otra cosa).
 personaje: si el mensaje presenta a un personaje con nombre que no tiene ficha ("el protagonista se va
 a llamar Kael…"), accion personaje; descripcion = todo lo que dice de él. Si el mensaje se refiere a lo
 anterior ("crea su ficha", "eso"), toma los datos de ultima_accion.
+Si ultima_accion.accion es "pregunta", el mensaje suele ser la respuesta: accion nota (o personaje).
+"Anota esto", "guarda esa idea": accion nota; lo que hay que guardar está en ultima_accion o en sus anteriores.
+proyecto: en "proyecto" el nombre; crear true si pide uno nuevo; contenido = lo que diga del proyecto.
+nombrar_imagen: tras una imagen (ultima_accion), "así será Aely", "esa es Kira": en personaje el nombre.
 prompt (imágenes): en español, completo, con los rasgos de la ficha; al rehacer, parte del prompt de
 ultima_accion y aplica los cambios. nombre_imagen: el nombre del personaje si lo hay; si no, una
 palabra de lo dibujado; sin números.
@@ -112,11 +121,15 @@ class Interprete:
         archivos: dict[str, Path] = contexto.pop("_rutas", {})
         # El mensaje va dentro del JSON para que no se confunda con instrucciones.
         entrada = json.dumps({"mensaje": texto, **contexto}, ensure_ascii=False)
-        for intento in (1, 2):   # un solo reintento, y solo si la respuesta no es JSON
+        for intento in (1, 2):   # un solo reintento: respuesta vacía (pasa a veces) o sin JSON
+            inicio = time.monotonic()
             respuesta = await self.cliente.completar_con(self.cliente.cadena[0], entrada, self.sistema,
                                                          max_tokens=self.max_tokens)
             if respuesta is None:
                 log.warning("Intérprete: ChatGPT no respondió (%s)", self.cliente.ultimo_error)
+                # Un fallo rápido se reintenta; una espera agotada no (el usuario ya esperó bastante).
+                if intento == 1 and time.monotonic() - inicio < REINTENTO_SI_FALLA_ANTES_DE_S:
+                    continue
                 return None
             datos = extraer_json(respuesta.texto)
             if datos is not None:
@@ -151,7 +164,7 @@ def validar(datos: dict, archivos: dict[str, Path], personajes: dict[str, str]) 
     tipo = datos.get("tipo") if datos.get("tipo") in TIPOS else "general"
     i = Interpretacion(accion, confianza, contenido=str(datos.get("contenido") or "").strip()[:4000], tipo=tipo,
                        personaje=_texto(datos.get("personaje"), 60).strip(" .\"'"),
-                       descripcion=_texto(datos.get("descripcion"), 400),
+                       descripcion=_texto(datos.get("descripcion"), 4000),
                        prompt=_texto(datos.get("prompt"), 3000),
                        nombre_imagen=_texto(datos.get("nombre_imagen"), 30),
                        proyecto=_texto(datos.get("proyecto"), 60).strip(" .\"'"),

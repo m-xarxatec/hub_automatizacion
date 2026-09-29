@@ -140,6 +140,24 @@ _ORDENES: list[tuple[str, re.Pattern]] = [
         rf"^(?:{_VERBO_GUARDAR}{_SEP}(?:(?:una|la){_SEP})?)?(?:nueva{_SEP})?nota(?:{_SEP}de)?"
         rf"(?:{_SEP}(?P<tipo>idea|historia|producci[oó]n|di[aá]logo))?{_SEP}(?P<a>.+)$", re.I)),
     ("estado", re.compile(rf"^(?:(?:ver|dame|mu[eé]strame|muestra){_SEP}(?:el{_SEP})?)?estado(?:{_SEP}del servidor)?$", re.I)),
+    # Diario del día (Diario/AAAA-MM-DD.md): "anota en mi diario que…", "diario: hoy entinté 3 páginas".
+    ("diario", re.compile(
+        rf"^(?:(?:{_VERBO_GUARDAR}|escrib(?:e|ir)(?:me)?)(?:{_SEP}(?:esto|lo siguiente))?{_SEP})?en{_SEP}"
+        rf"(?:mi|el){_SEP}diario(?:{_SEP}que)?{_SEP}(?P<a>.+)$", re.I)),
+    ("diario", re.compile(rf"^(?:querido{_SEP})?diario{_SEP}(?P<a>.+)$", re.I)),
+    ("limpiar", re.compile(
+        rf"^(?:limpia(?:r)?|borra(?:r)?)(?:{_SEP}(?:los|el|la))?{_SEP}(?:temporales|cach[eé]|basura)$"
+        rf"|^limpiar$", re.I)),
+    ("diagnostico", re.compile(
+        rf"^(?:(?:haz(?:me)?|dame|ver|mu[eé]strame|muestra|corre)(?:{_SEP}(?:el|un))?{_SEP})?diagn[oó]stico"
+        rf"(?:{_SEP}de{_SEP}(?:las{_SEP})?im[aá]genes)?$", re.I)),
+    ("modelo", re.compile(
+        rf"^(?:(?:cambia(?:r)?|elige|elegir|ver|cu[aá]l{_SEP}es)(?:{_SEP}(?:el|de))?{_SEP})?modelo"
+        rf"(?:{_SEP}de{_SEP}an[aá]lisis)?$", re.I)),
+    ("ayuda", re.compile(rf"^(?:ayuda|comandos|qu[eé]{_SEP}puedes{_SEP}hacer)$", re.I)),
+    ("nuevo", re.compile(
+        rf"^(?:nueva{_SEP}conversaci[oó]n|empecemos{_SEP}de{_SEP}(?:nuevo|cero)|"
+        rf"olvida{_SEP}(?:la{_SEP})?conversaci[oó]n(?:{_SEP}anterior)?)$", re.I)),
     ("img", re.compile(
         rf"^(?:gen[eé]ra|cr[eé]a|haz|dib[uú]ja)(?:me)?{_SEP}(?:una?{_SEP})?(?:imagen|ilustraci[oó]n|dibujo)"
         rf"(?:{_SEP}(?:de|del|con|sobre))?{_SEP}(?P<a>.+)$", re.I)),

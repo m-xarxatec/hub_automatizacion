@@ -22,6 +22,7 @@ from .proveedores.ollama import Ollama
 from .proveedores.openclaw import Nivel, OpenClaw, cadena_desde_config
 from .router.llm_local import LLMLocal
 from .router.interprete import Interprete
+from .acciones.redactor import Redactor
 from .router.llm_openclaw import OpinionIA
 from .voz.cliente import ClienteVoz
 from .router.cascada import Router
@@ -104,9 +105,17 @@ async def principal() -> int:
                                       timeout=float(cfg_int.get("timeout_s", 20))),
                              max_tokens=int(cfg_int.get("max_tokens", 400)))
                   if openclaw and cfg_int.get("activo", True) else None)
+    # Redactor (2026-09-30): decide qué escribir y dónde con el contenido real del proyecto.
+    cfg_red = cfg["proveedores"].get("redactor") or {}
+    redactor = (Redactor(OpenClaw(openclaw.url, openclaw.token, openclaw.cadena),
+                         Nivel(str(cfg_red["modelo"]), str(cfg_red.get("razonamiento", "low"))),
+                         max_tokens=int(cfg_red.get("max_tokens", 3000)),
+                         tope_contexto_tokens=int(cfg_red.get("tope_contexto_tokens", 12000)),
+                         tiempo_max_s=float(cfg_red.get("timeout_s", 90)))
+                if openclaw and cfg_red.get("activo", True) and cfg_red.get("modelo") else None)
     ctx = telegram_bot.Contexto(ajustes, cfg, boveda, estado, router, imagenes,
                                 ClienteVoz(ajustes.voz_url, vocabulario=cfg["voz"].get("vocabulario") or ""),
-                                openclaw, interprete)
+                                openclaw, interprete, redactor)
     bot, dp = telegram_bot.crear_bot(ctx)
 
     error = await telegram_bot.preparar(bot)

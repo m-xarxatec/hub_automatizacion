@@ -50,6 +50,7 @@ def test_preparar_incluye_todo_si_cabe_y_no_los_analisis_previos(boveda):
     carpeta = _proyecto(boveda)
     boveda.guardar_nota("la villana es la hermana del protagonista", "Webtoon", "historia")
     boveda.guardar_nota("máscara de zorro", "Webtoon", "idea")
+    (carpeta / "Analisis").mkdir()
     (carpeta / "Analisis" / "viejo.md").write_text("análisis anterior", encoding="utf-8")
     prep = analisis.preparar(boveda, "Webtoon", "¿es viable que la villana sea la hermana?")
     nombres = [n.ruta.relative_to(carpeta).as_posix() for n in prep.notas]

@@ -9,6 +9,7 @@ import json
 
 import httpx
 
+from app.boveda import escritor
 from app.proveedores.openclaw import CADENA_POR_DEFECTO, OpenClaw
 from app.router import ejemplos
 from app.router import interprete as interp
@@ -94,7 +95,9 @@ def test_interpretar_sin_respuesta_no_pasa_a_haiku():
     cuerpos = []
     cliente = _gateway("", cuerpos, estado=502)
     assert asyncio.run(Interprete(cliente).interpretar("hola", interp.contexto(None, {}, {}, None))) is None
-    assert len(cuerpos) == 1   # Haiku por Claude Code cuesta ~3.600 tokens: el respaldo es SetFit
+    # Un fallo rápido se reintenta una vez, siempre con ChatGPT: Haiku por Claude Code cuesta
+    # ~3.600 tokens y el respaldo es SetFit.
+    assert len(cuerpos) == 2 and {c["modelo"] for c in cuerpos} == {"openai/gpt-6-luna"}
 
 
 # --- en el bot ----------------------------------------------------------------------------
@@ -124,7 +127,9 @@ def _con_interprete(tmp_path, cfg, boveda, *respuestas):
 
 def _proyecto_con_karito(ctx, dp, bot):
     _run(dp, bot, _msg("/proyecto nuevo Webtoon"))
+    # Estructura de los proyectos anteriores al 2026-09-30 (Historia/Personajes): se sigue respetando.
     ficha = ctx.boveda.carpeta_proyectos / "Webtoon" / "Historia" / "Personajes" / "Karito.md"
+    ficha.parent.mkdir(parents=True)
     ficha.write_text("---\ntipo: personaje\nnombre: Karito\n---\n# Karito\n\n## Descripción\n\nVillana.\n\n"
                      "## Notas\n\n## Referencias visuales\n", encoding="utf-8")
     return ficha
@@ -261,10 +266,13 @@ def test_personaje_existente_con_descripcion_vacia_la_completa(tmp_path, cfg, bo
     _run(dp, bot, _msg("/proyecto nuevo Webtoon"))
     ficha, creada = personajes.crear_o_anotar(boveda, "Webtoon", "Kael", "", "voz")
     assert creada and personajes.descripcion_vacia(ficha)
+    assert ficha == boveda.carpeta_proyectos / "Webtoon" / "Personajes" / "Kael.md"
+    assert escritor.sin_frontmatter(ficha.read_text(encoding="utf-8")) == "# Kael\n"   # sin secciones vacías
     personajes.crear_o_anotar(boveda, "Webtoon", "Kael", "Mide 1,90 m y tiene ojos plata.", "voz")
     texto = ficha.read_text(encoding="utf-8")
-    assert texto.split("## Descripción")[1].split("## Personalidad")[0].strip() == "Mide 1,90 m y tiene ojos plata."
+    assert texto.endswith("# Kael\n\nMide 1,90 m y tiene ojos plata.\n")   # bajo el título
+    assert not personajes.descripcion_vacia(ficha)
     personajes.crear_o_anotar(boveda, "Webtoon", "Kael", "Usa una espada gigante.", "voz")
     texto = ficha.read_text(encoding="utf-8")
     assert "Usa una espada gigante." in texto.split("## Notas")[1]       # ya tenía descripción: va a notas
-    assert "Mide 1,90 m" in texto.split("## Descripción")[1].split("## Personalidad")[0]
+    assert texto.index("Mide 1,90 m") < texto.index("## Notas")
