@@ -39,8 +39,11 @@ from ..boveda.proyectos import Boveda
 from ..estado import limpieza
 from ..estado.db import Estado
 from ..proveedores.cadena import SinProveedores
+from ..router.clasificador import ModeloRechazado
 from ..proveedores.openclaw import OpenClaw
 from ..router.cascada import Router as RouterHub
+from ..router import interprete as interp
+from ..router.interprete import Interpretacion, Interprete
 from ..router.reglas import (Decision, archivo_aparte, limpiar_tarea, nombre_respondido, orden_hablada,
                              pedido_personaje, renombrar_imagen, tipo_nota)
 from ..voz.cliente import ClienteVoz, ErrorVoz, para_hablar
@@ -48,6 +51,10 @@ from ..voz.cliente import ClienteVoz, ErrorVoz, para_hablar
 log = logging.getLogger(__name__)
 
 PENDIENTE_TTL_S = 600
+# Lo último que hizo el bot en cada chat ("esa imagen no me gusta", "no ahí, ponla en X") vale este tiempo.
+ULTIMA_TTL_S = 1800
+# Por debajo de esta confianza del intérprete se pregunta con botones en vez de ejecutar.
+CONFIANZA_INTERPRETE = 0.6
 # Respuesta en espejo (decisión 9): True mientras se atiende una nota de voz, o un botón
 # pulsado sobre una respuesta hablada. decir() responde entonces con voz y no con texto.
 _hablado: ContextVar[bool] = ContextVar("hablado", default=False)
@@ -78,11 +85,15 @@ AYUDA = """Comandos disponibles:
 /limpiar  borrar temporales (/limpiar simular para ver qué borraría)
 /reentrenar  entrenar el router con tus correcciones y lo que decidió la IA
 
-También puedes escribir sin comando y el router decide; lo que elijas con los
-botones se guarda como ejemplo para el próximo /reentrenar.
-Las notas se agregan a Ideas.md, Historia.md o Produccion.md del proyecto; si nombran
-a un personaje con ficha, van a su ficha. Para un archivo propio: "crea un archivo sobre…".
-"Crea un personaje llamado Bruno que sea carnicero" crea su ficha (si falta el nombre, pregunto).
+También puedes escribir o hablar sin comando: ChatGPT entiende qué quieres y dónde va.
+- "Anota en la ficha de Karito que tiene 200 años" -> en su ficha, sin la orden.
+- "Quiero que anotes en el archivo referencia elfa…" -> en ese archivo.
+- "No ahí, ponla en X" -> copio la última nota a X (la anterior no se borra).
+- "Esa imagen no me gusta, hazla estilo anime" -> rehago la última imagen.
+- "Crea un personaje llamado Bruno que sea carnicero" -> su ficha (si falta el nombre, pregunto).
+Sin indicar lugar, las notas van a Ideas.md, Historia.md o Produccion.md del proyecto.
+Si ChatGPT no responde, decide el router local; lo que elijas con los botones se guarda
+como ejemplo para el próximo /reentrenar.
 Envía una imagen con un pie como "referencia para Zamael" y se inserta en su nota.
 Las imágenes generadas se llaman elfa1, elfa2…; para nombrarla: "la imagen que se acaba de
 crear será el personaje Aeli".
@@ -118,10 +129,22 @@ class Contexto:
     imagenes: GeneradorImagenes | None = None
     voz: ClienteVoz | None = None
     openclaw: OpenClaw | None = None
+    interprete: Interprete | None = None
     inicio: float = field(default_factory=time.time)
     pendientes: dict[str, dict[str, Any]] = field(default_factory=dict)
     # chat -> clave del pendiente de un personaje al que le falta el nombre
     esperando_nombre: dict[int, str] = field(default_factory=dict)
+    # chat -> lo último que hizo el bot (contexto para el intérprete)
+    ultima: dict[int, dict[str, Any]] = field(default_factory=dict)
+
+    def recordar(self, chat: int, **datos: Any) -> None:
+        self.ultima[chat] = {**datos, "hora": time.time()}
+
+    def ultima_de(self, chat: int) -> dict[str, Any] | None:
+        u = self.ultima.get(chat)
+        if not u or u["hora"] < time.time() - ULTIMA_TTL_S:
+            return None
+        return {k: v for k, v in u.items() if k != "hora"}
 
     def guardar_pendiente(self, **datos: Any) -> str:
         """Guarda datos para un botón. `ttl` (segundos) cambia la caducidad por defecto."""
@@ -338,14 +361,20 @@ def crear_router(ctx: Contexto) -> Router:
         await decir(m.bot, m.chat.id, crear_personaje(proyecto, nombre, p["descripcion"], p["origen"]))
         return True
 
-    async def orden_directa(m: Message, texto: str, origen: str) -> bool:
-        """Pedidos que no necesitan router: nombrar la última imagen, crear un personaje
-        o una nota en archivo propio."""
+    async def orden_rigida(m: Message, texto: str, origen: str) -> bool:
+        """Lo que se resuelve siempre en local y sin tokens: la respuesta a una pregunta del bot
+        (el nombre de un personaje) y nombrar la última imagen."""
+        if await respuesta_de_nombre(m, texto):
+            return True
         nombre_img = renombrar_imagen(texto)
         if nombre_img and ctx.imagenes is not None:
             log.info("Mensaje (%s): orden directa nombrar imagen", origen)
             await nombrar_imagen(m, nombre_img)
             return True
+        return False
+
+    async def orden_directa(m: Message, texto: str, origen: str) -> bool:
+        """Respaldo sin GPT: crear un personaje o una nota en archivo propio por reglas."""
         pedido = pedido_personaje(texto)
         if pedido:
             log.info("Mensaje (%s): orden directa crear personaje", origen)
@@ -380,6 +409,7 @@ def crear_router(ctx: Contexto) -> Router:
             f"Servidor: {a.servidor_nombre} (activo hace {minutos} min)",
             f"Proyecto activo: {destino(m.chat.id)}",
             f"Proyectos: {len(ctx.boveda.listar_proyectos())}",
+            f"Intérprete: {'ChatGPT (' + ctx.interprete.cliente.cadena[0].modelo + '), respaldo local' if ctx.interprete else 'apagado: decide el router local'}",
             f"Router: {ctx.router.motor}",
             f"Ollama: {ollama}",
             f"OpenClaw: {openclaw}",
@@ -522,7 +552,8 @@ def crear_router(ctx: Contexto) -> Router:
             log.exception("Error guardando imagen")
             await decir(m.bot, m.chat.id, f"No pude guardar la imagen: {e}")
 
-    async def generar_imagen(bot: Bot, chat: int, idea: str) -> None:
+    async def generar_imagen(bot: Bot, chat: int, idea: str, prompt: str | None = None,
+                             nombre: str | None = None) -> None:
         if ctx.imagenes is None:
             await decir(bot, chat, "La generación de imágenes no está configurada.")
             return
@@ -532,7 +563,7 @@ def crear_router(ctx: Contexto) -> Router:
         else:
             await bot.send_message(chat, "Generando la imagen… puede tardar hasta un minuto.")
         try:
-            r_img = await ctx.imagenes.crear(idea, proyecto)
+            r_img = await ctx.imagenes.crear(idea, proyecto, prompt=prompt, nombre=nombre)
         except SinProveedores as e:
             log.error("No se pudo generar la imagen. Motivos: %s", e)
             diagnostico = await ctx.imagenes.diagnosticar()
@@ -545,6 +576,7 @@ def crear_router(ctx: Contexto) -> Router:
             log.exception("Error guardando la imagen generada")
             await decir(bot, chat, f"La imagen se generó, pero no pude guardarla en la bóveda: {e}")
             return
+        ctx.recordar(chat, accion="imagen", imagen=r_img.nota.stem, prompt=r_img.prompt)
         foto = BufferedInputFile(r_img.imagen.read_bytes(), filename=r_img.imagen.name)
         if _hablado.get():
             await bot.send_photo(chat, foto)
@@ -720,9 +752,15 @@ def crear_router(ctx: Contexto) -> Router:
             return
         async with entrenando:
             await decir(m.bot, m.chat.id, "Entrenando el router con tus ejemplos y correcciones. "
-                           "Tarda unos minutos; mientras tanto sigo atendiendo.")
+                           "Tarda unos 15 minutos; mientras tanto sigo atendiendo.")
             try:
                 meta = await asyncio.to_thread(ctx.router.reentrenar)
+            except ModeloRechazado as e:
+                log.warning("Modelo nuevo del router descartado: %s", e.motivo)
+                await decir(m.bot, m.chat.id, f"El modelo nuevo salió peor en las pruebas ({e.motivo}). "
+                               "Lo descarté y sigo con el anterior.",
+                            voz="El modelo nuevo salió peor que el actual. Lo descarté y sigo con el anterior.")
+                return
             except ValueError as e:
                 await decir(m.bot, m.chat.id, str(e))
                 return
@@ -731,9 +769,16 @@ def crear_router(ctx: Contexto) -> Router:
                 await decir(m.bot, m.chat.id, "El entrenamiento falló; sigo con el modelo anterior. "
                                "Los detalles están en los registros (./hub.sh logs).")
                 return
+        calidad = ""
+        if meta.get("evaluacion"):
+            nueva = meta["evaluacion"]
+            calidad = f" Acierta el {nueva['porcentaje']:.0%} de las frases de prueba"
+            if meta.get("evaluacion_anterior"):
+                calidad += f" (antes, {meta['evaluacion_anterior']['porcentaje']:.0%})"
+            calidad += "."
         await decir(m.bot, m.chat.id, f"Router reentrenado con {meta['ejemplos']} ejemplos "
                        f"({meta.get('correcciones', 0)} correcciones, {meta.get('aprendidos', 0)} "
-                       f"aprendidos de la IA) en {meta['segundos']} s.")
+                       f"aprendidos de la IA) en {meta['segundos']} s.{calidad}")
 
     @r.message(F.voice | F.audio)
     async def voz_msg(m: Message, bot: Bot) -> None:
@@ -758,12 +803,22 @@ def crear_router(ctx: Contexto) -> Router:
         await procesar_hablado(m, bot, texto)
 
     async def procesar_hablado(m: Message, bot: Bot, texto: str) -> None:
-        """Una orden directa se ejecuta como su comando; si no, decide el router."""
-        if await respuesta_de_nombre(m, texto) or await orden_directa(m, texto, "voz"):
+        """Órdenes rígidas (prefijo fijo: "nota idea, …", "cambia al proyecto X") en local;
+        el resto lo interpreta GPT y, si no responde, el router local."""
+        if await orden_rigida(m, texto, "voz"):
             return
         orden = orden_hablada(texto)
+        # Con intérprete, "genera una imagen…" y "crea un archivo…" van a GPT: entiende el
+        # personaje y el destino. Sin él, siguen siendo órdenes directas.
+        if orden and ctx.interprete and (orden[0] == "img" or archivo_aparte(texto)):
+            orden = None
         if orden is None:
-            await resolver(m, bot, await ctx.router.decidir(texto), texto, origen="voz")
+            if await por_interprete(m, bot, texto, "voz"):
+                return
+            if await orden_directa(m, texto, "voz"):
+                return
+            await resolver(m, bot, await ctx.router.decidir(texto, sin_ia=ctx.interprete is not None),
+                           texto, origen="voz")
             return
         comando, args = orden
         if comando == "proyecto":
@@ -786,10 +841,131 @@ def crear_router(ctx: Contexto) -> Router:
     # --- texto libre ------------------------------------------------------------
     @r.message(F.text)
     async def texto_libre(m: Message, bot: Bot) -> None:
-        if await respuesta_de_nombre(m, m.text) or await orden_directa(m, m.text, "telegram"):
+        if await orden_rigida(m, m.text, "telegram") or await por_interprete(m, bot, m.text, "telegram"):
             return
-        decision = await ctx.router.decidir(m.text)
+        if await orden_directa(m, m.text, "telegram"):
+            return
+        decision = await ctx.router.decidir(m.text, sin_ia=ctx.interprete is not None)
         await resolver(m, bot, decision, m.text)
+
+    # --- intérprete con GPT (prioridad) -------------------------------------------
+    async def por_interprete(m: Message, bot: Bot, texto: str, origen: str) -> bool:
+        """True si GPT entendió el mensaje y se atendió; False para seguir con el router local."""
+        if ctx.interprete is None:
+            return False
+        chat = m.chat.id
+        proyecto = ctx.estado.proyecto_activo(chat)
+        carpeta = ctx.boveda.carpeta_proyectos / proyecto if proyecto else None
+        fichas = personajes.fichas(ctx.boveda, proyecto)
+        contexto = interp.contexto(proyecto, interp.archivos_de(ctx.boveda.raiz, carpeta), fichas,
+                                   ctx.ultima_de(chat))
+        await bot.send_chat_action(chat, "typing")
+        i = await ctx.interprete.interpretar(texto, contexto)
+        if i is None:
+            log.info("Mensaje (%s, %d caracteres): el intérprete no respondió, decide el router local",
+                     origen, len(texto))
+            return False
+        local = await asyncio.to_thread(ctx.router.clasificador.predecir, texto) if ctx.router.clasificador else None
+        destino_log = ("personaje" if i.destino_personaje else "archivo" if i.destino_archivo
+                       else "nuevo" if i.destino_nuevo else "por tipo")
+        # Sin el contenido del mensaje: la acción de GPT, lo que habría dicho SetFit y el destino.
+        log.info("Mensaje (%s, %d caracteres): %s por gpt, confianza %.2f (setfit: %s %.2f), destino %s",
+                 origen, len(texto), i.accion, i.confianza, local.accion if local else "-",
+                 local.confianza if local else 0, destino_log)
+        if i.confianza < CONFIANZA_INTERPRETE:
+            await resolver(m, bot, Decision(i.etiqueta_setfit or "nota", i.confianza, tipo=i.tipo, motor="gpt"),
+                           texto, origen)
+            return True
+        # El modelo grande enseña al chico: solo donde SetFit se equivocaba o dudaba.
+        etiqueta = i.etiqueta_setfit
+        if etiqueta and local and (local.accion != etiqueta or ctx.router.nivel(local) != "ejecutar") \
+                and i.confianza >= ctx.router.umbral_ia:
+            try:
+                if ctx.router.aprender_de(texto, etiqueta):
+                    log.info("Router: aprendido del intérprete -> %s", etiqueta)
+            except OSError:
+                log.exception("No se pudo guardar lo aprendido del intérprete")
+        await aplicar(m, bot, i, texto, origen, fichas)
+        return True
+
+    async def aplicar(m: Message, bot: Bot, i: Interpretacion, texto: str, origen: str,
+                      fichas: dict[str, Path]) -> None:
+        chat = m.chat.id
+        proyecto = ctx.estado.proyecto_activo(chat)
+        contenido = i.contenido or texto
+        try:
+            if i.accion == "nota":
+                await decir(bot, chat, guardar_interpretada(chat, contenido, i, fichas, origen, proyecto))
+            elif i.accion == "tarea":
+                ruta = ctx.boveda.agregar_tarea(limpiar_tarea(contenido), proyecto)
+                await decir(bot, chat, f"Tarea agregada a {ctx.relativa(ruta)}")
+            elif i.accion == "consulta" and ctx.openclaw:
+                await consultar(bot, chat, texto)
+            elif i.accion in ("imagen", "rehacer_imagen"):
+                await generar_imagen(bot, chat, texto, prompt=i.prompt or contenido, nombre=i.nombre_imagen or None)
+            elif i.accion == "analisis" and ctx.openclaw:
+                await pedir_analisis(bot, chat, texto)
+            elif i.accion == "personaje":
+                await personaje(m, i.personaje or None, i.descripcion, texto, origen)
+            elif i.accion == "proyecto":
+                await proyecto_por_voz(m, i)
+            elif i.accion == "mover_nota":
+                await mover_nota(bot, chat, i, fichas, origen, proyecto)
+            else:   # búsqueda (fase 3) u otra que no esté disponible: pregunta con botones
+                await resolver(m, bot, Decision(i.etiqueta_setfit or "nota", i.confianza, tipo=i.tipo, motor="gpt"),
+                               texto, origen)
+        except ValueError as e:
+            await decir(bot, chat, str(e))
+        except OSError as e:
+            log.exception("Error escribiendo en la bóveda")
+            await decir(bot, chat, f"No pude escribir en la bóveda: {e}")
+
+    def guardar_interpretada(chat: int, contenido: str, i: Interpretacion, fichas: dict[str, Path],
+                             origen: str, proyecto: str | None) -> str:
+        """Escribe la nota donde dijo el usuario (ficha, archivo existente o nuevo) o por tipo."""
+        # Si GPT eligió la ficha como archivo, va igual a su sección "## Notas".
+        por_ruta = {ruta: nombre for nombre, ruta in fichas.items()}
+        if i.destino_archivo in por_ruta:
+            i.destino_personaje, i.destino_archivo = por_ruta[i.destino_archivo], None
+        if i.destino_personaje and i.destino_personaje in fichas:
+            ruta = personajes.anotar(ctx.boveda, fichas[i.destino_personaje], contenido, origen)
+            mensaje = f"Nota agregada a la ficha de {ruta.stem} ({ctx.relativa(ruta)})"
+        elif i.destino_archivo:
+            ruta = ctx.boveda.agregar_a_archivo(i.destino_archivo, contenido, origen)
+            mensaje = f"Nota agregada a {ctx.relativa(ruta)}"
+        elif i.destino_nuevo:
+            ruta = ctx.boveda.guardar_nota(contenido, proyecto, i.tipo, origen, aparte=True, titulo=i.destino_nuevo)
+            mensaje = f"Nota guardada en un archivo propio: {ctx.relativa(ruta)}"
+        else:
+            ruta = ctx.boveda.guardar_nota(contenido, proyecto, i.tipo, origen)
+            mensaje = f"Nota ({i.tipo}) agregada a {ctx.relativa(ruta)}"
+        ctx.recordar(chat, accion="nota", archivo=ctx.relativa(ruta), contenido=contenido)
+        return mensaje
+
+    async def mover_nota(bot: Bot, chat: int, i: Interpretacion, fichas: dict[str, Path], origen: str,
+                         proyecto: str | None) -> None:
+        """"No ahí, ponla en X": copia la última nota al lugar correcto. La original no se borra
+        (decisión 6: el bot nunca borra); se avisa dónde quedó por si el usuario la quiere quitar."""
+        ultima = ctx.ultima_de(chat)
+        if not ultima or ultima.get("accion") != "nota":
+            await decir(bot, chat, "No tengo una nota reciente que mover. Dime qué guardar y dónde.")
+            return
+        if not (i.destino_personaje or i.destino_archivo or i.destino_nuevo):
+            await decir(bot, chat, "No entendí a qué archivo la muevo. Dime el nombre del archivo o del personaje.")
+            return
+        anterior = ultima["archivo"]
+        mensaje = guardar_interpretada(chat, ultima["contenido"], i, fichas, origen, proyecto)
+        await decir(bot, chat, f"{mensaje}. La copia anterior sigue en {anterior}: bórrala en Obsidian si "
+                               "no la quieres ahí (yo no borro lo que escribes).",
+                    voz="Listo, la puse donde me dijiste. La copia anterior sigue en su sitio.")
+
+    async def proyecto_por_voz(m: Message, i: Interpretacion) -> None:
+        if not i.proyecto:
+            await proyecto(m, "")
+        elif i.crear:
+            await proyecto(m, f"nuevo {i.proyecto}")
+        else:
+            await proyecto(m, i.proyecto)
 
     async def resolver(m: Message, bot: Bot, d: Decision, texto: str, origen: str = "telegram") -> None:
         chat = m.chat.id

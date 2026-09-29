@@ -1,5 +1,6 @@
 # Frases de entrenamiento del clasificador local (día 3).
-# Objetivo: 20 a 30 ejemplos por acción, escritos como hablan ustedes.
+# 100 ejemplos por acción: 20 de base y 80 en el estilo real del usuario (2026-09-29).
+# No agregar aquí frases de prueba.yaml: la medición dejaría de valer.
 # Las correcciones hechas con los botones del bot se guardan aparte, en
 # datos/router/correcciones.yaml, y se suman a estas al hacer /reentrenar.
 # "referencia" y "referencia_personaje" no van aquí: solo aplican a imágenes
@@ -26,6 +27,88 @@ nota:
   - capítulo 6 empieza con un sueño de Kira
   - el mentor esconde una cicatriz en la espalda
   - apuntar que la moneda del reino se llama sol
+  # Estilo del usuario (dictado, muletillas, casos difíciles), 2026-09-29
+  - Muy bien, anota que Kira tiene una hermana gemela que nadie conoce
+  - Bueno, se me ocurre que el reino del norte no tiene rey desde hace cien años
+  - Quiero que anotes que el mercado flotante solo abre de noche
+  - Me gustaría apuntar que la elfa odia a los humanos por lo que le hicieron a su madre
+  - "Anota lo siguiente: la espada de Leo se rompe en el capítulo doce"
+  - Oye, guarda que el mentor era un ladrón antes de ser maestro
+  - Pon en las ideas que los dioses están dormidos bajo el mar
+  - Apúntame esto, la moneda de plata tiene la cara de la reina muerta
+  - Tengo una idea, que la historia se cuente desde el diario de la villana
+  - Se me vino una idea, un tren que atraviesa el desierto de sal
+  - Quiero que en la ficha de Zamael pongas que le tiene miedo al agua
+  - En la nota de la elfa agrega que pelea con un arco largo
+  - Agrega a la historia que el dragón fue domesticado por los monjes
+  - Escribe que la villana y el protagonista fueron amigos de niños
+  - Nota rápida, el pueblo pesquero se llama Marea Baja
+  - Diálogo del mentor, la fuerza sin rumbo es solo ruido
+  - Frase para el capítulo dos, nadie recuerda a los que huyen
+  - Que Kira use un parche en el ojo derecho después de la batalla
+  - La torre del mago está hecha de huesos de ballena
+  - Los soldados del imperio llevan máscaras de bronce
+  - Farolas azules en la calle principal
+  - Un gato de tres colas
+  - Lluvia de ceniza sobre la capital
+  - El puerto al amanecer
+  - Cadenas oxidadas en la mazmorra
+  - La hermana menor
+  - Lo que pasó en el templo
+  - Ropa de invierno para el grupo
+  - Cuervos blancos en el campanario
+  - Mmm, creo que el arco dos debería pasar en invierno
+  - Pues nada, que al final Leo se queda solo
+  - Bueno, ahora vamos a dejar escrito que el reino usa magia de sangre
+  - Muy bien.. Entonces el mercenario tiene una deuda con el gremio
+  - La paleta del capítulo final debería ser gris con toques rojos
+  - Para la portada del arco tres, una mano saliendo del agua
+  - Me gustaría que los capítulos terminen siempre con una pregunta
+  - Podríamos agregar que la elfa canta cuando está nerviosa
+  - Idea de escena, la villana llorando sola en el trono
+  - Guarda esto para después, el protagonista no sabe leer
+  - En el capítulo cinco el grupo se separa en el bosque
+  # Tanda 2: dictado sin tildes ni puntuación, errores de Whisper, notas con archivo destino
+  - mira quiero que en el archivo de la villana pongas que tiene una hija escondida
+  - en la nota del mercenario anota que perdio un ojo en la guerra
+  - agrega en la ficha de Kira que es alérgica a las flores de loto
+  - quiero que dentro de la nota del reino escribas que el invierno dura seis meses
+  - pon en el documento de ideas que el capitulo diez sea un flashback
+  - en el archivo de la elfa apunta que su arma se llama Aguja de Luna
+  - anota en historia que la guerra empezó por un malentendido
+  - en produccion apunta que las viñetas de accion van sin fondo
+  - agrega a la nota de referencias que quiero un estilo parecido a Solo Leveling
+  - ok entonces la protagonista tiene diecisiete años y vive con su abuela
+  - a ver la cosa es que el mentor sabia todo desde el principio
+  - mira se me ocurrio algo el reino del sur comercia con esclavos y eso lo odia el protagonista
+  - bueno y tambien que la villana tenga un cuervo que habla
+  - la verdad no se pero creo que el templo deberia estar bajo tierra
+  - tengo una idea medio loca que los muertos puedan votar en el consejo
+  - ok apunta esto el capitulo uno termina con la ciudad en llamas
+  - muy bien ahora vamos a poner que Zamael tiene una cicatriz en forma de luna
+  - la hermana de Kira trabaja para el imperio sin que ella lo sepa
+  - el protagonista siempre lleva la bufanda de su padre
+  - el gremio de ladrones se reune en las cloacas
+  - cuando llueve los espiritus del rio salen a cazar
+  - la magia de sangre deja las venas negras
+  - la armadura del general brilla como obsidiana
+  - una isla que se mueve con las mareas
+  - noche de luna roja
+  - el cuervo de la villana
+  - batalla en el puente de piedra
+  - el anillo del rey
+  - escena de lluvia con la protagonista sola
+  - dialogo de Kira no pienso morir en este pueblo de mala muerte
+  - frase de la villana todos ustedes me pertenecen
+  - para el arco dos quiero mas humor entre Leo y Kira
+  - el color de la magia de la elfa es verde esmeralda
+  - las paginas de pelea deberian ir con fondos en blanco y lineas de velocidad
+  - pues el dragon habla solo con los niños
+  - y que el protagonista no pueda usar magia hasta el final
+  - que el primer capitulo tenga poco dialogo y mucha imagen
+  - Creo que el nombre del reino podría ser Valdoria
+  - No te idea el mercenario es el padre de la elfa
+  - Muy bien.. La villana tiene una corona hecha de raíces
 tarea:
   - tengo que terminar el storyboard del capítulo 3
   - pendiente revisar los diálogos de la escena del puente
@@ -47,6 +130,88 @@ tarea:
   - rehacer la página 9, los fondos quedaron mal
   - agendar la sesión de dibujo del sábado
   - preparar el calendario de publicación del mes
+  # Estilo del usuario (dictado, muletillas, casos difíciles), 2026-09-29
+  - No se me puede pasar enviar la factura al cliente
+  - Que no se me olvide cargar la tableta
+  - Ojo con la fecha de entrega del concurso
+  - Quedé en pasarle los bocetos a Marcos el jueves
+  - Quedé con la editora en mandarle el guion
+  - Tengo pendiente ordenar las capas del capítulo dos
+  - Mañana a primera hora limpiar los bocetos
+  - El viernes toca publicar el episodio
+  - Recuérdame comprar plumillas nuevas
+  - Recuérdame el martes revisar las estadísticas del webtoon
+  - Añade una tarea, diseñar la portada del arco dos
+  - Agrega a pendientes responder el correo de la plataforma
+  - Pon como pendiente redibujar la mano de Kira en la página seis
+  - Apunta en tareas escanear los dibujos a lápiz
+  - Tarea nueva, preparar las miniaturas del capítulo diez
+  - Hoy tengo que terminar de colorear la página tres
+  - Esta noche sin falta exporto el capítulo
+  - Necesito terminar los fondos antes del domingo
+  - Me falta entregar los bocetos al colorista
+  - Debo actualizar mi portafolio esta semana
+  - Hay que corregir la ortografía de todo el arco uno
+  - Hay que pagar la suscripción de Clip Studio antes del día cinco
+  - Me toca subir el teaser a Instagram
+  - Antes del lunes tener listas las viñetas del combate
+  - Para el jueves terminar el lineart de la elfa
+  - Este finde practicar perspectiva con cubos
+  - Organizar mañana la carpeta de bocetos viejos
+  - Llamar al de la imprenta para pedir presupuesto
+  - Mandarle un mensaje a Laura sobre las correcciones
+  - Imprimir las pruebas de color del capítulo uno
+  - Renombrar las capas antes de enviar el archivo
+  - Descargar las fuentes para los globos de texto
+  - Hacer respaldo del disco duro de las ilustraciones
+  - Tengo que estudiar cómo dibujar pliegues de ropa
+  - Practicar rostros de perfil una hora diaria
+  - Revisar el contrato de la plataforma antes de firmar
+  - Sacar tiempo para retocar la portada del capítulo cuatro
+  - Terminar hoy el storyboard del epílogo
+  - Muy bien, agrega la tarea de pasar a limpio el guion del capítulo once
+  - Bueno, tengo que acordarme de responder a los lectores el domingo
+  # Tanda 2: dictado sin tildes ni puntuación, errores de Whisper, notas con archivo destino
+  - mira tengo que mandar los bocetos antes del viernes no se me puede olvidar
+  - ok recuerdame lo de la imprenta mañana
+  - a ver apunta que tengo que comprar papel bond
+  - oye pon de tarea revisar el guion del capitulo tres
+  - agregame un pendiente llamar a la editorial el lunes
+  - no puedo olvidar entregar el capitulo ocho el domingo
+  - ojo que el jueves vence la convocatoria
+  - quede con Ana en revisar la portada juntos
+  - tengo que ir a la papeleria por marcadores
+  - hay que terminar el capitulo antes de fin de mes
+  - me toca colorear las paginas del flashback
+  - falta pasar a tinta la pagina ocho
+  - pendiente exportar las paginas en jpg para instagram
+  - mañana sin falta limpio los bocetos de la villana
+  - esta semana tengo que terminar la ficha de la elfa
+  - para hoy escanear los bocetos del cuaderno
+  - dentro de dos dias entregar el guion corregido
+  - antes del concurso retocar la portada
+  - el domingo publicar el capitulo cinco
+  - agenda para el sabado sesion de dibujo con Leo
+  - debo pagar la tableta a fin de mes
+  - necesito practicar manos todos los dias
+  - acordarme de responder los comentarios del capitulo dos
+  - acuerdame de hacer copia de seguridad
+  - recuerdame que mañana es la reunion con el colorista
+  - Tarea practicar fondos una hora diaria
+  - Añade a tareas redibujar a Zamael en la pagina dos
+  - Pon en pendientes cambiar la fuente de los globos
+  - Tengo que llevar la tableta a reparar
+  - Hay que organizar las referencias por capitulo
+  - Me falta el storyboard del capitulo seis
+  - Revisar la resolucion de las paginas antes de subirlas
+  - Mandar el archivo final a la plataforma el viernes
+  - Terminar de sombrear la portada esta noche
+  - Comprar pinceles nuevos para acuarela
+  - Actualizar el calendario de publicacion con las nuevas fechas
+  - Muy bien, mañana tengo que ordenar las capas del capitulo nueve
+  - Bueno, esta semana toca hacer los bocetos del arco dos
+  - Oye no se me puede olvidar renovar la licencia
+  - Primero que nada tengo que terminar el lineart de hoy
 imagen:
   - genera una imagen de Zamael bajo la lluvia
   - hazme un boceto de la ciudad abandonada
@@ -68,6 +233,88 @@ imagen:
   - hazme un mood visual del capítulo 6
   - ilustra la escena del puente con lluvia
   - quiero un concepto del traje del mentor
+  # Estilo del usuario (dictado, muletillas, casos difíciles), 2026-09-29
+  - Muéstrame cómo se vería Kira con el pelo corto
+  - Enséñame cómo quedaría el castillo nevado
+  - A ver cómo se vería la villana con armadura negra
+  - Me haces una ilustración del puerto de noche
+  - Me dibujas a Zamael enojado
+  - Hazme un dibujo del gato de tres colas
+  - Ahora vas a crear al mismo mercenario pero de perfil
+  - Crea a la misma elfa pero con el pelo recogido
+  - Genera otra versión del dragón pero más pequeño
+  - Muy bien.. Ahora hazla con una capa roja y una espada
+  - Crea una imagen en estilo anime de un monje con tatuajes
+  - Crea una chica guerrera de pelo negro con dos espadas, estilo manhwa
+  - Crea un chico mago de ojos dorados, tipo ficha de personaje
+  - Genera un personaje de cuerpo completo, un caballero con armadura dorada
+  - Dibuja una ciudad sobre las nubes
+  - Píntame un bosque de cristal
+  - Quiero una imagen de la torre de huesos de ballena
+  - Una imagen de la lluvia de ceniza sobre la capital
+  - Necesito ver cómo sería la taberna por dentro
+  - Ilústrame la batalla del puente
+  - Hazme un fondo del desierto de sal con el tren
+  - Genera un retrato de la reina muerta
+  - Crea una portada para el arco dos en tonos azules
+  - Diseña visualmente la moneda de plata
+  - Hazme una referencia de la ropa de invierno del grupo
+  - Genera una imagen para usar de referencia de la mazmorra
+  - Crea un concept art del soldado con máscara de bronce
+  - Crea una imagen del gato de tres colas en estilo chibi
+  - Visualiza cómo sería la villana llorando en el trono
+  - Dibújame la mano saliendo del agua para la portada
+  - Genérame un paisaje de acantilados al atardecer
+  - Muéstrame en imagen a la hermana gemela de Kira
+  - Quiero que generes una ilustración de los cuervos blancos
+  - Hazme varias versiones del logo del webtoon
+  - Genera un personaje insecto con caparazón brillante
+  - Crea en estilo anime a una elfa arquera con arco largo
+  - Pinta al grupo caminando por el bosque en invierno
+  - Bocetea una criatura marina gigante
+  - Haz una imagen de una espada rota clavada en la arena
+  - Hazme un retrato estilo anime del protagonista sonriendo
+  # Tanda 2: dictado sin tildes ni puntuación, errores de Whisper, notas con archivo destino
+  - creo una imagen de una elfa con armadura de hojas
+  - crea una imagen en estilo alime de un samurai con mascara de zorro
+  - Creame una imagen de la villana con la corona de raices
+  - genera una imagen del cuervo que habla estilo manhwa
+  - hazme una imagen de la isla que se mueve
+  - quiero una imagen del general con armadura de obsidiana
+  - dibujame a la protagonista con la bufanda de su padre
+  - muestrame como seria el gremio de ladrones en las cloacas
+  - enseñame a Leo y Kira riendo en una taberna
+  - a ver como queda el reino de Valdoria desde el cielo
+  - ok ahora crea a la misma villana pero de niña
+  - ahora haz al mismo dragon pero volando de noche
+  - ahora hazlo con el pelo largo y una cicatriz
+  - otra version de la elfa pero sonriendo
+  - la misma imagen pero en blanco y negro
+  - mira hazme un retrato de Zamael con la cicatriz de luna
+  - una ilustracion de la noche de luna roja
+  - pintame la batalla del puente de piedra
+  - dibuja el anillo del rey con detalle
+  - genera una portada para el capitulo diez estilo anime
+  - crea un personaje nuevo en imagen un herrero gigante con barba trenzada
+  - crea una chica pirata con un loro mecanico estilo anime
+  - crea un chico ladron flaco con capucha tipo ficha de personaje sin fondo
+  - genera una ficha visual del mercenario de frente y de perfil
+  - necesito una imagen de referencia de la ciudad en llamas
+  - quiero ver el templo bajo tierra iluminado con antorchas
+  - haz un boceto rapido de la isla con las mareas
+  - generame fondos de un bosque para usar en el capitulo tres
+  - ilustra a los espiritus del rio cazando bajo la lluvia
+  - visualizame la magia de sangre con las venas negras
+  - Crea una imagen en estilo anime de la abuela de la protagonista
+  - Genera una imagen de un lobo gigante de pelaje blanco
+  - Hazme un fanart de Kira con traje de gala
+  - Quiero una imagen del consejo de los muertos
+  - Dibuja una escena de pelea entre la elfa y el general
+  - Muy bien.. Ahora crea una imagen del cuervo sobre el hombro de la villana
+  - Bueno ahora vas a generar el mapa del reino en estilo antiguo
+  - Genera un escenario de una aldea en la montaña al amanecer estilo acuarela
+  - Hazme una imagen tipo póster con todo el grupo protagonista
+  - Diseña a un monstruo del río con escamas negras en una imagen
 consulta:
   - qué significa kitsune en el folclore japonés
   - cómo se escribe un buen cliffhanger
@@ -89,6 +336,88 @@ consulta:
   - cómo funciona el ritmo de lectura en el scroll
   - recomiéndame un formato para exportar las páginas
   - qué es el viaje del héroe
+  # Estilo del usuario (dictado, muletillas, casos difíciles), 2026-09-29
+  - Me puedes explicar qué es el lineart
+  - Me puedes decir qué tamaño debe tener la portada
+  - Oye, y cuánto tarda en aprobarse un webtoon en Canvas
+  - Oye, y qué programa usan los profesionales
+  - Quisiera saber cuánto se gana por capítulo
+  - Quisiera entender qué es el sombreado cel
+  - Tienes idea de cuántas páginas tiene un tomo de manga
+  - Tienes idea de cómo se hace un storyboard digital
+  - Sabes si Procreate sirve para webtoon
+  - Sabes cuánto cobra un guionista
+  - Una duda, se puede publicar en dos plataformas a la vez
+  - Una pregunta, qué es un panel de transición
+  - Y eso para qué sirve
+  - Y cómo se hace el efecto de velocidad
+  - Y los globos se hacen en otra capa
+  - Me explicas cómo funciona el color por capas
+  - Explícame qué es un plano contrapicado
+  - Dime cuántos proyectos tengo
+  - Dime qué hay en la bandeja
+  - Quiero que me digas qué notas tengo del capítulo dos
+  - Quiero saber qué es un webtoon vertical
+  - Qué diferencia hay entre boceto y lineart
+  - Qué significa DPI
+  - Qué tan largo debe ser un capítulo
+  - Cuánto tiempo toma aprender a dibujar anatomía
+  - Cuál es el formato de imagen más ligero
+  - Cómo se hace una onomatopeya bonita
+  - Cómo consigo lectores al empezar
+  - Por qué mis colores se ven apagados al exportar
+  - Dónde se publican los webtoons en español
+  - Cuándo conviene hacer un hiatus
+  - Recomiéndame libros de guion para cómic
+  - Dame ideas de cómo practicar perspectiva
+  - Me ayudas con una duda de color
+  - Oye, cómo estás hoy
+  - Hola, qué puedes hacer
+  - Qué comandos tienes
+  - Y se usa el negro puro para las sombras
+  - Me recuerdas cuáles son mis tareas
+  - Una consulta, cuánto pesa un capítulo exportado
+  # Tanda 2: dictado sin tildes ni puntuación, errores de Whisper, notas con archivo destino
+  - oye cuanto cuesta publicar en webtoon
+  - y eso como se hace
+  - una pregunta como se hace el efecto de brillo
+  - me podrias decir que es el sombreado duro
+  - que me recomiendas para empezar un webtoon
+  - dime cuantas notas tengo del proyecto
+  - quiero que me digas que ideas tengo guardadas
+  - dime que dice la ficha de Kira
+  - que tengo en historia hasta ahora
+  - cuales son los personajes que llevo creados
+  - que proyecto tengo activo
+  - que hora es
+  - como te llamas
+  - para que sirves
+  - que significa webtoon
+  - como se dice viñeta en coreano
+  - cuanto mide un panel normalmente
+  - sabes cuantos lectores tiene un webtoon exitoso
+  - tienes idea de como hacer el texto de los gritos
+  - me explicas que es la composicion en z
+  - explicame la diferencia entre manhwa y manhua
+  - una duda los capitulos deben tener el mismo largo
+  - y los fondos se pintan antes o despues
+  - y eso sirve tambien para el color
+  - por que se usa el formato largo en webtoon
+  - cual es la mejor tableta para empezar
+  - cuanto se tarda en entintar una pagina
+  - como organizo mis capas en Clip Studio
+  - que tipo de letra se usa en los webtoons
+  - donde consigo pinceles gratis para Clip Studio
+  - Muy bien, y cuántos capítulos debería tener la primera temporada
+  - Bueno, una pregunta, cómo se hace una transición entre escenas
+  - Oye me puedes recordar qué tareas me faltan
+  - Qué me faltaba por hacer esta semana
+  - Hola buenos días cómo estás
+  - Gracias, qué más puedes hacer por mí
+  - Cuál era el nombre que le puse al reino
+  - Qué dijimos del mercenario
+  - Me resumes lo que tengo de la villana
+  - Qué te pedí la última vez
 analisis:
   - es viable que la villana sea la hermana del protagonista
   - encaja que Zamael traicione al grupo en el capítulo 5
@@ -110,6 +439,88 @@ analisis:
   - qué problemas ves en la estructura del capítulo 4
   - es coherente que el dragón aparezca antes del torneo
   - analiza si la villana tiene motivaciones claras
+  # Estilo del usuario (dictado, muletillas, casos difíciles), 2026-09-29
+  - Crees que funciona que Kira muera en el arco uno
+  - Crees que la elfa tiene buena motivación
+  - Te parece que el ritmo del capítulo tres es lento
+  - Te parece bien que el mentor sea el traidor
+  - Qué opinas de la relación entre Zamael y Kira
+  - Qué opinas del final que tengo pensado
+  - Qué te parece la historia del mercenario con lo que llevamos
+  - Funciona que el dragón sea una niña maldita
+  - Funciona el giro del capítulo siete o es muy forzado
+  - Encaja que el reino no tenga rey con lo que ya escribí
+  - Tiene sentido que la villana perdone al protagonista
+  - Hay algo que chirríe en la historia de la elfa
+  - Hay alguna incoherencia entre los capítulos dos y cinco
+  - Está bien construido el sistema de magia de sangre
+  - Está equilibrado el grupo protagonista
+  - Qué tan creíble es que Leo sobreviva a la caída
+  - Qué tan original es la premisa del webtoon
+  - Qué tan bien está llevada la tensión en el arco dos
+  - Analiza mis notas de personajes y dime cuál necesita más desarrollo
+  - Analiza la estructura de los primeros tres capítulos
+  - Haz un análisis del tono de la historia
+  - Revisa lo que llevamos y dime si el villano es memorable
+  - Revisa las notas del proyecto y dime qué ideas se contradicen
+  - Revisa el arco uno y dime dónde se cae el ritmo
+  - Evalúa si el mundo está bien explicado para un lector nuevo
+  - Evalúa la coherencia de la línea temporal
+  - Dame tu opinión sincera de la trama
+  - Dame una crítica honesta del protagonista
+  - Hazme una crítica de la paleta de colores que elegí
+  - Mira mis ideas y dime cuáles encajan mejor con la historia
+  - Mira todo lo que tengo de la villana y dime si es coherente
+  - Examina los diálogos y dime si suenan naturales
+  - Estudia el proyecto y sugiere cómo mejorar el inicio
+  - Propón mejoras para el arco del torneo según mis notas
+  - Compara el capítulo uno con el dos y dime cuál engancha más
+  - Detecta si hay personajes que sobran
+  - Sería mejor que la hermana muriera o que desapareciera
+  - Me conviene revelar el secreto del mentor tan pronto
+  - Cómo ves la historia hasta ahora
+  - Crees que los lectores entenderán el final
+  # Tanda 2: dictado sin tildes ni puntuación, errores de Whisper, notas con archivo destino
+  - crees que la historia tiene sentido hasta ahora
+  - te parece que la villana es muy cliche
+  - que opinas de que el mentor lo sepa todo
+  - funciona que la protagonista viva con su abuela
+  - hay algo raro en la historia del gremio
+  - esta bien que el dragon solo hable con niños
+  - que tan buena es la idea del consejo de los muertos
+  - encaja la isla que se mueve con el resto del mundo
+  - tiene logica que el protagonista no use magia hasta el final
+  - mira todo el proyecto y dime que no cuadra
+  - revisa mis notas y dime si la villana es coherente
+  - analiza la historia de Kira y dime si tiene arco
+  - dame un analisis completo del proyecto
+  - hazme un analisis del ritmo de los capitulos
+  - evalua mis ideas y dime cuales son las mejores
+  - dime con sinceridad si la historia engancha
+  - revisa el proyecto y dime que personajes estan flojos
+  - compara a Leo con Kira y dime quien esta mejor escrito
+  - estudia las notas y dime si hay huecos de guion
+  - critica el final que tengo planeado
+  - Crees que sobra algún personaje
+  - Te parece creíble que la hermana trabaje para el imperio
+  - Qué tal está quedando la historia
+  - Cómo ves que la guerra empiece por un malentendido
+  - Sería buena idea quitar el flashback del capítulo diez
+  - Me conviene que el mentor muera al final del arco uno
+  - Está bien el ritmo o voy muy rápido
+  - Qué tan coherente es el reino de Valdoria
+  - Hay contradicciones entre mis notas de la elfa
+  - Funciona que el cuervo hable o queda infantil
+  - Muy bien, ahora analiza todo lo que llevamos y dime qué mejorarías
+  - Bueno, revisa la trama y dime si el giro es predecible
+  - Mira lo que tengo del arco dos y dame tu opinión
+  - Examina los personajes y dime si sus motivaciones son claras
+  - Evalúa si el primer capítulo presenta bien el mundo
+  - Haz una revisión a fondo de la historia antes de seguir
+  - Analiza si el humor entre Leo y Kira rompe el tono oscuro
+  - Dame tu opinión de la paleta cobre y tierra para el tono
+  - Propón cómo mejorar el conflicto principal con lo que tengo
+  - Detecta ideas repetidas en mis notas
 busqueda:
   - busca referencias de arquitectura brutalista
   - encuentra ejemplos de armaduras samurái reales
@@ -131,3 +542,85 @@ busqueda:
   - busca vestuario medieval femenino para referencia
   - encuentra ejemplos de onomatopeyas en coreano
   - investiga sobre castillos flotantes en la ficción
+  # Estilo del usuario (dictado, muletillas, casos difíciles), 2026-09-29
+  - Consígueme referencias de armaduras vikingas
+  - Consígueme fotos de acantilados
+  - Quiero que busques imágenes de trenes antiguos
+  - Quiero que busques información sobre la magia de sangre en el folclore
+  - Búscame fotos de desiertos de sal
+  - Búscame referencias de manos sosteniendo espadas
+  - Busca en internet referencias de ropa de invierno medieval
+  - Busca en la web fotos de ballenas para la torre
+  - Busca en Google cómo son las monedas antiguas
+  - Buscar referencias de máscaras de bronce
+  - Busca imágenes reales de campanarios
+  - Busca fotos de cuervos blancos
+  - Encuéntrame fotos de gatos para la referencia
+  - Encuentra referencias de peinados de guerreras
+  - Encuentra tutoriales de color para piel
+  - Encuentra en internet ejemplos de portadas de webtoon
+  - Investiga cómo vestían los pescadores del siglo diecisiete
+  - Investiga sobre dragones en la mitología china
+  - Investiga qué premios hay para cómics independientes
+  - Averigua en internet cuánto pagan las plataformas coreanas
+  - Averigua dónde venden tabletas baratas
+  - Busca noticias de la industria del webtoon
+  - Busca videos de referencia de peleas con espada
+  - Busca en YouTube tutoriales de perspectiva
+  - Busca fotos de mazmorras de castillos
+  - Busca información sobre barcos piratas reales
+  - Busca webtoons que usen paletas grises
+  - Busca artistas que dibujen elfas en estilo anime
+  - Busca en Pinterest referencias de vestidos de reina
+  - Rastrea referencias de criaturas marinas gigantes
+  - Localiza fotos de bosques nevados
+  - Busca documentación sobre anatomía de insectos
+  - Busca ejemplos de logos de cómics
+  - Busca en la red fuentes gratuitas para globos de texto
+  - Búscame planos de tabernas medievales
+  - Busca referencias de uniformes militares imperiales
+  - Encuéntrame videos de monjes entrenando
+  - Busca imágenes del desierto de Atacama
+  - Busca en internet cómo se ve la ceniza volcánica
+  - Busca fotos de puertos pesqueros al amanecer
+  # Tanda 2: dictado sin tildes ni puntuación, errores de Whisper, notas con archivo destino
+  - buscame fotos de lobos blancos
+  - busca referencias de coronas de raices
+  - busca en internet como son los cuervos de cerca
+  - busca imagenes de cloacas antiguas
+  - encuentrame referencias de piratas con loros
+  - busca fotos de herreros trabajando
+  - buscame en pinterest ropa de gala medieval
+  - busca en la web mapas antiguos para inspirarme
+  - busca referencias de aldeas en la montaña
+  - quiero que busques fotos de islas pequeñas
+  - investiga como son las armaduras de obsidiana en la ficcion
+  - averigua que webtoons de fantasia estan de moda
+  - busca informacion sobre la mitologia de los espiritus del rio
+  - busca tutoriales de sombreado duro en youtube
+  - busca en google referencias de bufandas de lana
+  - encuentra fotos de puentes de piedra antiguos
+  - buscame imagenes de lunas rojas
+  - busca fotos de anillos de reyes medievales
+  - rastrea referencias de monstruos de rio en internet
+  - busca en internet cuanto cobran los coloristas de webtoon
+  - Busca referencias visuales de venas negras para la magia
+  - Búscame en internet ejemplos de mapas de fantasía
+  - Busca en la red fotos de templos subterráneos
+  - Encuéntrame referencias de antorchas en cuevas
+  - Busca fotos reales de tormentas en el mar
+  - Busca en Internet trajes de ladrones de la edad media
+  - Investiga qué armas usaban los piratas
+  - Busca ejemplos de posters de webtoon
+  - Busca imágenes de abuelas tejiendo para referencia
+  - Consígueme referencias de lobos corriendo
+  - Muy bien, busca en internet referencias de dragones pequeños
+  - Bueno, búscame fotos de mercados medievales
+  - Oye busca en la web cómo es una herrería por dentro
+  - Busca información de cómo publicar un webtoon en Tapas
+  - Busca referencias de peinados trenzados vikingos
+  - Busca imágenes de cicatrices de quemaduras
+  - Busca fotos de tatuajes en la espalda para referencia
+  - Busca referencias de loros de colores
+  - Encuentra en la web fotos de montañas nevadas al amanecer
+  - Busca videos de cómo pintar acuarela digital

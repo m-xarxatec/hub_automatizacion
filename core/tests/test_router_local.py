@@ -176,8 +176,8 @@ def test_llm_local_acota_confianza_y_tolera_ollama_caido(cfg):
 def test_reentrenar_une_fuentes_y_recarga(cfg, tmp_path, monkeypatch):
     llamadas = {}
 
-    def entrenar_falso(textos, etiquetas, destino, extra=None):
-        llamadas.update(textos=textos, etiquetas=etiquetas, destino=destino)
+    def entrenar_falso(textos, etiquetas, destino, extra=None, control=None, **opciones):
+        llamadas.update(textos=textos, etiquetas=etiquetas, destino=destino, opciones=opciones)
         return {"ejemplos": len(textos), **(extra or {})}
 
     monkeypatch.setattr(clasificador, "entrenar", entrenar_falso)
@@ -189,6 +189,7 @@ def test_reentrenar_une_fuentes_y_recarga(cfg, tmp_path, monkeypatch):
     assert meta["correcciones"] == 1 and meta["aprendidos"] == 1
     assert "pintar fondos el domingo" in llamadas["textos"] and "falta el layout" in llamadas["textos"]
     assert llamadas["destino"] == tmp_path / "router" / "modelo"
+    assert llamadas["opciones"] == cfg["router"]["entrenamiento"]   # base, iteraciones… de config.yaml
     assert r.clasificador is not None
 
 

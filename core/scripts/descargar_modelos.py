@@ -2,7 +2,8 @@
 
 Uso:  docker compose run --rm core python -m scripts.descargar_modelos
 
-- Modelo base del clasificador del router (unos 470 MB, en modelos/hf).
+- Modelo base del clasificador del router (router.entrenamiento.base en config.yaml; mpnet,
+  unos 1,1 GB, en modelos/hf).
 - qwen2.5 3B en Ollama (unos 2 GB) solo si proveedores.llm_local.activo: dormido en el MVP
   para no competir por recursos; con él, levantar antes Ollama (COMPOSE_PROFILES=llm-local).
 Whisper y Kokoro los maneja el contenedor voz. Sin Stable Diffusion: las imágenes van por APIs.
@@ -18,6 +19,7 @@ import httpx
 
 from app import config as config_mod
 from app.ajustes import Ajustes
+from app.router.clasificador import MODELO_BASE
 
 
 def descargar_ollama(url: str, modelo: str) -> bool:
@@ -49,14 +51,12 @@ def descargar_ollama(url: str, modelo: str) -> bool:
     return True
 
 
-def descargar_base_router() -> bool:
+def descargar_base_router(base: str) -> bool:
     from huggingface_hub import snapshot_download
 
-    from app.router.clasificador import MODELO_BASE
-
-    print(f"Descargando {MODELO_BASE} (modelo base del router)...", flush=True)
+    print(f"Descargando {base} (modelo base del router)...", flush=True)
     try:
-        snapshot_download(MODELO_BASE)
+        snapshot_download(base)
     except Exception as e:  # noqa: BLE001
         print(f"No se pudo descargar el modelo base del router: {e}")
         return False
@@ -73,7 +73,8 @@ def main() -> int:
         ok = descargar_ollama(a.ollama_url, cfg_llm["modelo"])
     else:
         print("qwen no se descarga: llm_local.activo es false (dormido en el MVP).")
-    ok = descargar_base_router() and ok
+    base = cfg["router"].get("entrenamiento", {}).get("base") or MODELO_BASE
+    ok = descargar_base_router(base) and ok
     return 0 if ok else 1
 
 

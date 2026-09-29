@@ -190,6 +190,27 @@ def test_reentrenar_responde_con_resumen(tmp_path, cfg, boveda, monkeypatch):
     assert "Router reentrenado con 120 ejemplos (3 correcciones, 0 aprendidos de la IA)" in textos[-1]
 
 
+def test_reentrenar_informa_la_calidad(tmp_path, cfg, boveda, monkeypatch):
+    ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
+    monkeypatch.setattr(ctx.router, "reentrenar", lambda: {
+        "ejemplos": 615, "segundos": 800.0, "evaluacion": {"porcentaje": 0.937},
+        "evaluacion_anterior": {"porcentaje": 0.742}})
+    _run(dp, bot, _msg("/reentrenar"))
+    assert "Acierta el 94% de las frases de prueba (antes, 74%)." in _textos(sesion)[-1]
+
+
+def test_reentrenar_descarta_modelo_peor(tmp_path, cfg, boveda, monkeypatch):
+    from app.router.clasificador import ModeloRechazado
+    ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
+
+    def peor():
+        raise ModeloRechazado("el nuevo acierta el 60 %", {})
+    monkeypatch.setattr(ctx.router, "reentrenar", peor)
+    _run(dp, bot, _msg("/reentrenar"))
+    assert "salió peor en las pruebas" in _textos(sesion)[-1]
+    assert "sigo con el anterior" in _textos(sesion)[-1]
+
+
 def test_reentrenar_fallido_sigue_con_modelo_anterior(tmp_path, cfg, boveda, monkeypatch):
     ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
 
@@ -439,7 +460,7 @@ def test_decision_resuelta_por_la_ia_se_ejecuta_y_se_aprende(tmp_path, cfg, bove
     from app.router.reglas import Decision
     ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
 
-    async def decidir(texto, tiene_imagen=False):
+    async def decidir(texto, tiene_imagen=False, sin_ia=False):
         return Decision("tarea", 0.85, motor="clasificador+llm local")
     ctx.router.decidir = decidir
     _run(dp, bot, _msg("/proyecto nuevo Webtoon"), _msg("falta el layout del capítulo 2"))

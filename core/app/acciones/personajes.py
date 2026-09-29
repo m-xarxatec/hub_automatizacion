@@ -15,6 +15,7 @@ from ..boveda.proyectos import Boveda
 from . import referencias
 
 SECCION_NOTAS = "## Notas"
+SECCION_DESCRIPCION = "## Descripción"
 
 
 def _aparece(texto: str, nombre: str) -> bool:
@@ -23,6 +24,14 @@ def _aparece(texto: str, nombre: str) -> bool:
         if texto[m.start()].isupper():
             return True
     return False
+
+
+def fichas(boveda: Boveda, proyecto: str | None) -> dict[str, Path]:
+    """Nombre -> ficha de cada personaje del proyecto."""
+    carpeta = referencias.carpeta_personajes(boveda, proyecto) if proyecto else None
+    if not carpeta or not carpeta.exists():
+        return {}
+    return {str(escritor.leer_frontmatter(n).get("nombre") or n.stem): n for n in sorted(carpeta.glob("*.md"))}
 
 
 def mencionado(boveda: Boveda, proyecto: str, texto: str) -> Path | None:
@@ -44,6 +53,21 @@ def mencionado(boveda: Boveda, proyecto: str, texto: str) -> Path | None:
     return hallados[0] if len(hallados) == 1 else None
 
 
+def descripcion_vacia(ficha: Path) -> bool:
+    """True si la sección "## Descripción" existe y no tiene nada escrito."""
+    lineas = ficha.read_text(encoding="utf-8").splitlines()
+    try:
+        inicio = next(i for i, l in enumerate(lineas) if l.strip() == SECCION_DESCRIPCION)
+    except StopIteration:
+        return False
+    for linea in lineas[inicio + 1:]:
+        if linea.startswith("## "):
+            return True
+        if linea.strip():
+            return False
+    return True
+
+
 def anotar(boveda: Boveda, ficha: Path, texto: str, origen: str) -> Path:
     ahora = boveda.ahora()
     via = "voz" if origen == "voz" else "texto"
@@ -59,7 +83,10 @@ def crear_o_anotar(boveda: Boveda, proyecto: str, nombre: str, descripcion: str,
     Devuelve (ficha, True si se creó)."""
     hallado = referencias.buscar_personaje(boveda, nombre, proyecto)
     if hallado:
-        if descripcion:
+        if descripcion and descripcion_vacia(hallado[1]):
+            referencias.insertar_en_seccion(hallado[1], SECCION_DESCRIPCION, descripcion.strip())
+            boveda.registrar_diario(f"Descripción de [[{boveda.enlace(hallado[1])}|{hallado[1].stem}]]")
+        elif descripcion:
             anotar(boveda, hallado[1], descripcion, origen)
         return hallado[1], False
     ficha = referencias.crear_personaje(boveda, proyecto, nombre, descripcion)

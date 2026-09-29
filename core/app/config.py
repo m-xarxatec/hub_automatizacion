@@ -28,6 +28,10 @@ POR_DEFECTO: dict[str, Any] = {
         "acciones": ["nota", "tarea", "imagen", "referencia", "referencia_personaje",
                      "consulta", "analisis", "busqueda"],
         "segunda_opinion": True, "llm_timeout_s": 15,
+        "interprete": {"activo": True, "modelo": "openai/gpt-6-luna", "razonamiento": "low",
+                       "timeout_s": 20, "max_tokens": 400},
+        "entrenamiento": {"base": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+                          "iteraciones": 10, "epocas": 1, "congelar_vocabulario": True},
     },
     "proveedores": {
         "llm_local": {"activo": False, "modelo": "qwen2.5:3b-instruct-q4_K_M"},

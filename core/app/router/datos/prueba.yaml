@@ -1,0 +1,169 @@
+# Conjunto de PRUEBA del router: nunca se usa para entrenar (scripts/evaluar_router.py avisa
+# si alguna frase aparece también en los ejemplos, correcciones o aprendidos).
+# Si se entrena con estas frases, la medición deja de valer: el modelo "se sabe el examen".
+# Fuentes: mensajes reales del usuario (bóveda del 27 al 29 de septiembre, marcados "real"),
+# lista_entrenamiento.md (frases difíciles medidas en la laptop) y frases nuevas en su estilo:
+# dictado por voz, español latinoamericano, muletillas ("Muy bien", "Bueno", "Oye") y errores
+# típicos de Whisper.
+
+nota:
+  - No te idea, la villana va a tener tentáculos en la espalda.   # real
+  - Creo que quiero agregar algunas ideas, pero realmente no lo sé. Podríamos agregar que el personaje principal va a tener unos tatuajes en la espalda.   # real
+  - Actualmente tengo una nota llamada referencia elfa, la cual contiene una imagen. Me gustaría apuntar en esa nota que quiero que ese personaje tenga pecas y pelee con dos hachas, una en cada mano.   # real
+  - "Quiero que anotes en el archivo referencia elfa lo siguiente: ella es una elfs de 20 años"   # real
+  - Columnas rotas cubiertas de musgo
+  - Una espada que pesa lo que pesan tus culpas
+  - Faroles de papel en el puente
+  - El templo
+  - Lo del capítulo tres
+  - Colores para la villana
+  - La escena del puente
+  - Máscaras de zorro
+  - Oye, apunta que el hermano mayor es zurdo
+  - "Anota esto: la guardia real usa capas moradas"
+  - Bueno, se me vino a la mente que el dragón podría ser en realidad una niña maldita
+  - La elfa tiene una cicatriz en la ceja izquierda
+  - Me gustaría que en el segundo arco el mentor traicione al grupo
+  - Guárdame esta idea, un pueblo donde nadie puede dormir
+  - Pues la capital debería estar construida sobre un volcán apagado
+  - El título del capítulo ocho podría ser la última marea
+  - Quiero que la historia empiece con un funeral
+  - "Diálogo para la villana: no le temo a la oscuridad, le temo a lo que esconde"
+  - Muy bien, entonces el mercenario trabaja para la reina sin que nadie lo sepa
+  - En la ficha de Insectobia pon que odia la luz del sol
+  - Los barcos invasores tienen velas negras con un ojo pintado
+
+tarea:
+  - No se me puede olvidar comprar tinta
+  - Ojo con la entrega del jueves
+  - Tengo pendiente escanear los bocetos
+  - Quedé en mandarle las páginas a Laura
+  - Mañana revisar los colores
+  - Recuérdame que el lunes tengo que subir el capítulo nueve
+  - Agrega a mis pendientes limpiar las líneas de la página cuatro
+  - Oye, tengo que llamar al de la imprenta antes del viernes
+  - Hay que rehacer la portada, no me convence
+  - Apunta como tarea terminar los fondos del bosque
+  - Esta semana sin falta termino el guion del arco dos
+  - Necesito acordarme de pagar la licencia de Clip Studio
+  - Para el sábado dejar listos los bocetos de la elfa
+  - Mi pendiente de hoy es colorear tres viñetas
+  - Debo mandar el correo a la editorial
+  - Antes de dormir exportar las páginas en PNG
+  - Me toca actualizar el calendario de publicación
+  - Tengo que practicar anatomía media hora cada día
+  - Pon en la lista de tareas comprar una tableta nueva
+  - Falta corregir los globos de texto del capítulo seis
+  - Hacer copia de seguridad de los archivos del webtoon
+  - Revisar mañana los comentarios de los lectores
+  - Pendiente para el finde, ordenar las referencias del castillo
+  - Agendar reunión con el colorista el martes
+  - Terminar de entintar a Insectobia hoy mismo
+
+imagen:
+  - crea una chica anime elfo pálida con los ojos rojos, cabello blanco y pecas... Sus ojos son grandes... Ropa medieval... Estilo anime estilizado sin fondo.. Tipo ficha de personaje   # real
+  - Muy bien.. Ahora vas a crear a la misma elfo pero con un hacha de batalla.. Es una guerrera ... En poses de batalla   # real
+  - Creo una imagen en estilo álimen de un mercenario calvo con barba que use dos dagas.   # real
+  - Enséñame cómo sería el protagonista de niño
+  - A ver cómo quedaría la portada en tonos rojos
+  - Dibújame el templo en ruinas de noche
+  - Me haces un dibujo de la hermana menor
+  - Genera una imagen de una elfa albina bajo la lluvia
+  - Quiero ver a Insectobia en estilo acuarela
+  - Hazme una ilustración de la capital sobre el volcán
+  - Imagen de referencia de una armadura samurái oxidada
+  - Píntame un atardecer en el puerto con barcos de velas rojas
+  - Crea un diseño del logo con una luna rota
+  - Muéstrame a la villana con sus tentáculos, estilo manhwa
+  - Necesito una referencia visual del mercado nocturno
+  - Hazme un concept art del dragón niña
+  - Genera un retrato del mentor con la cicatriz
+  - Quiero una imagen del bosque donde nadie duerme
+  - Dibuja al mercenario de espaldas con las dos dagas
+  - Me generas una portada para el capítulo uno
+  - Haz una ilustración de la guardia real con capas moradas
+  - Crea una imagen en estilo anime de un chico con tatuajes en la espalda
+  - Visualiza la escena del funeral con lluvia
+  - Un boceto de una espada ceremonial con gemas, porfa
+  - Diseña en una imagen el vestuario de la elfa guerrera
+
+consulta:
+  - Y se hace por viñeta?   # real
+  - Me puedes decir cuánto mide una tira de webtoon
+  - Oye, y cuántos capítulos suele tener una temporada
+  - Quisiera saber cuánto cobra un colorista
+  - Tienes idea de cómo se numeran las páginas
+  - Sabes si Clip Studio sirve para webtoon
+  - Una duda, cada cuánto se publica un webtoon
+  - Y eso cómo se hace en Photoshop
+  - Me explicas la regla de los tercios
+  - ¿Cuántos paneles suele tener un capítulo de webtoon?
+  - cómo se entinta digitalmente
+  - Qué resolución necesito para Webtoon Canvas
+  - Dime qué tareas tengo pendientes
+  - Cuál es la diferencia entre un plano americano y un plano medio
+  - Explícame qué es el ritmo vertical en un webtoon
+  - Oye, qué pinceles me recomiendas para lineart
+  - Cómo hago para que los fondos no se vean planos
+  - Qué significa sangrado en impresión
+  - Quiero saber cómo se registra una obra
+  - Dime qué personajes tenemos en el proyecto
+  - Qué es un one shot
+  - Me recuerdas qué proyecto está activo
+  - Cuánto se tarda normalmente en dibujar un capítulo
+  - Sabes qué es el cel shading
+  - Oye, cuál es la mejor hora para publicar
+
+analisis:
+  - Crees que encaja que el protagonista pierda sus poderes
+  - Funciona que el zorro hable desde el principio
+  - Hay algo que no cuadre en la historia del maestro
+  - Está bien planteado el conflicto entre los hermanos
+  - Qué opinas de la trama hasta ahora
+  - Te parece bien que la villana muera en el capítulo diez
+  - analiza si es viable que la villana sea la hermana del protagonista
+  - Revisa mis notas y dime si hay contradicciones
+  - Analiza el ritmo del primer arco
+  - Evalúa si los personajes secundarios están bien desarrollados
+  - Mira todo el proyecto y dime qué le falta a la historia
+  - Haz un análisis de la coherencia del mundo
+  - Qué tan sólido es el giro de la traición del mentor
+  - Compara a la villana con el protagonista y dime si están equilibrados
+  - Revisa la historia y sugiere cómo mejorar el final
+  - Dame tu opinión a fondo sobre el arco del torneo
+  - Busca huecos de guion en lo que llevamos
+  - Analiza si el dragón niña tiene sentido con lo que ya escribí
+  - Tiene lógica que la capital esté sobre un volcán con lo que llevamos
+  - Estudia las notas de personajes y dime cuál está flojo
+  - Hazme una crítica del capítulo uno
+  - Crees que la historia engancha desde el principio
+  - Qué tan coherente es la magia con las reglas que puse
+  - Examina el proyecto y propón tres ideas nuevas que encajen
+  - Analiza la paleta de colores que definí y dime si transmite algo oscuro
+
+busqueda:
+  - búscame referencias de armaduras samurái
+  - Busca en internet fotos de mercados flotantes
+  - Encuéntrame referencias de poses de pelea con hachas
+  - Busca imágenes de arquitectura gótica para la capital
+  - Buscar en la web cómo visten los monjes tibetanos
+  - Consígueme fotos de volcanes apagados
+  - Busca referencias reales de tatuajes maoríes
+  - Encuentra en internet tutoriales de lineart
+  - Busca webtoons parecidos a mi historia
+  - Busca en Google paletas de color cobre
+  - Búscame artículos sobre cómo publicar en Webtoon Canvas
+  - Busca fotos de barcos de vela antiguos
+  - Encuéntrame referencias de peinados medievales
+  - Busca en la red imágenes de espadas chinas
+  - Busca información sobre la mitología de los zorros japoneses
+  - Quiero que busques referencias de ropa medieval de campesinos
+  - Busca videos de cómo dibujar manos
+  - Busca en internet ilustraciones de bosques con niebla
+  - Encuentra fotos de mercados nocturnos asiáticos
+  - Busca noticias sobre concursos de webtoon
+  - Rastrea en la web referencias de insectos para Insectobia
+  - Busca fotos de cicatrices para referencia
+  - Búscame en internet planos de castillos reales
+  - Busca referencias de faroles de papel
+  - Busca cómo es la armadura de la guardia real inglesa

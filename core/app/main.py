@@ -19,8 +19,9 @@ from .estado.db import Estado
 from .acciones.imagenes import GeneradorImagenes
 from .proveedores.cadena import crear_cadena
 from .proveedores.ollama import Ollama
-from .proveedores.openclaw import OpenClaw, cadena_desde_config
+from .proveedores.openclaw import Nivel, OpenClaw, cadena_desde_config
 from .router.llm_local import LLMLocal
+from .router.interprete import Interprete
 from .router.llm_openclaw import OpinionIA
 from .voz.cliente import ClienteVoz
 from .router.cascada import Router
@@ -95,9 +96,17 @@ async def principal() -> int:
     router = Router(cfg, ajustes.datos / "router", llm=llm)
     ollama_prompts = Ollama(ajustes.ollama_url, cfg_llm["modelo"], timeout=30) if llm_activo else None
     imagenes = GeneradorImagenes(boveda, crear_cadena(cfg, estado=estado), ollama_prompts)
+    # Intérprete con GPT (prioridad en los mensajes libres); el router local queda de respaldo.
+    cfg_int = cfg_router.get("interprete") or {}
+    cadena_int = ((Nivel(str(cfg_int["modelo"]), str(cfg_int.get("razonamiento", "low"))),)
+                  if cfg_int.get("modelo") else openclaw.cadena if openclaw else ())
+    interprete = (Interprete(OpenClaw(openclaw.url, openclaw.token, cadena_int,
+                                      timeout=float(cfg_int.get("timeout_s", 20))),
+                             max_tokens=int(cfg_int.get("max_tokens", 400)))
+                  if openclaw and cfg_int.get("activo", True) else None)
     ctx = telegram_bot.Contexto(ajustes, cfg, boveda, estado, router, imagenes,
                                 ClienteVoz(ajustes.voz_url, vocabulario=cfg["voz"].get("vocabulario") or ""),
-                                openclaw)
+                                openclaw, interprete)
     bot, dp = telegram_bot.crear_bot(ctx)
 
     error = await telegram_bot.preparar(bot)
