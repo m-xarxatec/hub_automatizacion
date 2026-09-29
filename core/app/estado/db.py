@@ -1,8 +1,8 @@
 """Estado operativo en SQLite (fuera de la bóveda).
 
 Solo guarda lo que no tiene sentido como nota: proyecto activo, sesión, las últimas
-vueltas de la consulta en curso, preferencias (modelo de análisis), gasto por proveedor
-y cola de reintentos.
+vueltas de la consulta en curso, preferencias (modelo de análisis), gasto por proveedor,
+pausas de proveedores (cortacircuitos) y cola de reintentos.
 Nunca contenido de notas.
 Se puede borrar sin perder información real.
 """
@@ -44,6 +44,13 @@ CREATE TABLE IF NOT EXISTS preferencia (
     clave    TEXT NOT NULL,
     valor    TEXT NOT NULL,
     PRIMARY KEY (chat_id, clave)
+);
+-- Fallos seguidos de cada proveedor y hasta cuándo queda en pausa (cortacircuitos).
+CREATE TABLE IF NOT EXISTS proveedor_estado (
+    proveedor      TEXT PRIMARY KEY,
+    fallos         INTEGER NOT NULL DEFAULT 0,
+    pausado_hasta  REAL NOT NULL DEFAULT 0,
+    motivo         TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS cola (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,6 +143,23 @@ class Estado:
         return self.cx.execute(
             "SELECT proveedor, llamadas, usd FROM gasto WHERE fecha = ? ORDER BY proveedor", (fecha,)
         ).fetchall()
+
+    # --- pausas de proveedores ------------------------------------------------------
+    def estado_proveedor(self, proveedor: str) -> tuple[int, float, str]:
+        """(fallos seguidos, pausado hasta [epoch], motivo del último fallo)."""
+        fila = self.cx.execute(
+            "SELECT fallos, pausado_hasta, motivo FROM proveedor_estado WHERE proveedor = ?",
+            (proveedor,)).fetchone()
+        return (fila[0], fila[1], fila[2]) if fila else (0, 0.0, "")
+
+    def fijar_estado_proveedor(self, proveedor: str, fallos: int, pausado_hasta: float,
+                               motivo: str) -> None:
+        self.cx.execute(
+            "INSERT INTO proveedor_estado (proveedor, fallos, pausado_hasta, motivo) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(proveedor) DO UPDATE SET fallos = excluded.fallos, "
+            "pausado_hasta = excluded.pausado_hasta, motivo = excluded.motivo",
+            (proveedor, fallos, pausado_hasta, motivo))
+        self.cx.commit()
 
     # --- cola de pendientes ------------------------------------------------------
     def encolar(self, tipo: str, datos: dict[str, Any]) -> int:

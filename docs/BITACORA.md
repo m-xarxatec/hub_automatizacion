@@ -1519,3 +1519,136 @@ el código nuevo montado en el contenedor.
 **Qué aprendiste: un conflicto de Syncthing también es un archivo.** Su nombre cambia (`.sync-conflict-…`), así que
 un patrón exacto no lo cubre y se sincroniza como cualquier otro. Y los archivos de estado de cada dispositivo
 (pestañas abiertas) no deberían viajar: cada equipo tiene el suyo.
+
+## 2026-09-29 — Día 6 (parte 1): cortacircuitos en la cadena de imágenes; Syncthing emparejado
+
+**Qué se hizo**
+- Syncthing emparejado por el usuario entre la PC, el móvil y la tablet, con Obsidian abierto en ambos
+  dispositivos. Verificado en la PC: el servicio está activo, arranca solo, sigue corriendo sin sesión (*linger*)
+  y `.stfolder` está en la bóveda. La laptop queda para el despliegue.
+- Cortacircuitos en `proveedores/cadena.py`. Tras 3 fallos seguidos (`cortacircuitos` en `config.yaml`), un
+  proveedor de imágenes queda en pausa 5 minutos y la cadena lo salta sin llamarlo. Pasada la pausa se prueba
+  una vez: si vuelve a fallar, otra pausa; si responde, la cuenta vuelve a cero. `/diagnostico` y los motivos de
+  `SinProveedores` muestran "en pausa hasta las HH:MM tras N fallos seguidos (último: …)".
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/estado/db.py` | Tabla `proveedor_estado` (fallos seguidos, pausa hasta, último motivo) y sus dos métodos |
+| `core/app/proveedores/cadena.py` | Clase `Cortacircuitos`; `CadenaImagenes` la usa si se la pasan; `crear_cadena(..., estado=)` la arma desde `config.yaml` |
+| `core/app/main.py` | Pasa el estado SQLite a `crear_cadena` |
+| `core/tests/test_imagenes.py` | 4 pruebas: pausa y salto, motivo y reinicio tras un éxito, "falta configurar" no cuenta, lectura de `config.yaml` |
+
+**Decisiones y por qué**
+- **Estado en SQLite y no en memoria:** si el bot se reinicia mientras un proveedor está caído, la pausa se
+  mantiene. Es estado operativo, no contenido: cumple la decisión 1.
+- **Tabla con nombre genérico (`proveedor_estado`):** la cuota diaria agotada (pausa hasta 00:00 UTC) y el saldo
+  agotado (pausa hasta `/reactivar`) se guardarán ahí mismo en la próxima parte.
+- **"Falta configurar" no cuenta como fallo:** no es culpa del proveedor, y pausarlo ocultaría el motivo real.
+- **El cortacircuitos es opcional (`None` por defecto):** la cadena sin estado se comporta como antes, así que
+  las pruebas existentes no cambiaron.
+- **Solo imágenes por ahora:** la consulta por OpenClaw ya tiene su propia cadena (ChatGPT mini → Haiku) dentro
+  del plugin. Llevar el cortacircuitos ahí queda para la próxima parte, y en el análisis nunca se cambia de
+  modelo solo (decisión 4).
+- **Conflictos de Syncthing en `Ideas.md` y compañía:** el usuario decidió crear después del MVP una función que
+  los evite y detecte. La sección "Conflictos" de `GUIA.md` está desactualizada: dice que el bot siempre crea
+  archivos nuevos, y hoy agrega al final de archivos por tipo.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| Probar una pausa de 5 minutos sin esperarlos | Reloj inyectable (`reloj=`) y un reloj falso en las pruebas que se adelanta a mano |
+
+**Resultado:** 251 pruebas de `core` pasan (1 omitida; antes eran 247). La advertencia de `starlette.testclient`
+viene de la librería y ya estaba. **Falta reconstruir `core`** para que el bot en marcha use el cambio.
+
+**Cómo probarlo:** `docker compose build core && docker compose up -d core`. Para ver el cortacircuitos sin gastar
+cuota: parar OpenClaw (`docker compose stop openclaw`), pedir `/img gato` tres veces (falla rápido y guarda la idea como nota en la bóveda) y una cuarta:
+`./hub.sh logs` muestra "Cortacircuitos: chatgpt en pausa 5 min" y `/diagnostico`, "en pausa hasta las …".
+Al terminar, `docker compose start openclaw`.
+
+**Qué aprendiste: el cortacircuitos (*circuit breaker*).** Cuando un servicio está caído, insistir solo hace
+esperar al usuario y carga más al servicio. El cortacircuitos "salta" tras varios fallos seguidos: durante un
+tiempo ni se intenta y se falla al instante. Después deja pasar una prueba (estado "semiabierto"): si funciona,
+se cierra; si no, vuelve a abrirse. El nombre viene de los interruptores eléctricos.
+
+## 2026-09-29 — Rama `laptop-servidor` integrada en la PC; prueba de sincronización entre los 4 equipos
+
+**Qué se hizo**
+- Se trajo la rama `laptop-servidor` (4 commits de la laptop: plugin puente dentro de la imagen, carpeta `hub-router`,
+  `lista_entrenamiento.md`, `AUDITORIA_ESTADO.md` y el `.stignore` con `*`). Salía de `84e0523`, igual que `main`,
+  así que `main` avanzó con *fast-forward* (sin commit de fusión).
+- El cortacircuitos (sin confirmar en la PC) se guardó en un *stash* antes y se recuperó después.
+- `.stignore` de la bóveda de la PC actualizado a mano con el texto nuevo de `proyectos.py` (pendiente según la
+  entrada de Syncthing), tras comprobar que no quedaba ningún `.sync-conflict`.
+- El usuario confirma que la laptop ya funciona como servidor: tiene el token de Telegram y los inicios de sesión de
+  ChatGPT y Claude (OAuth) en OpenClaw, y lo probó con el bot.
+- **Prueba de sincronización** desde la PC, con `syncthing cli` (sin leer la clave de la API):
+  - Conexiones: laptop, tablet y móvil conectados directo por la red local, sin errores. La PC usa Syncthing 1.27;
+    los otros, 2.1 (son compatibles).
+  - Se creó `_hub/prueba-sync.md` en la bóveda y `prueba-sync.txt` en `datos/router`. La bóveda llegó a laptop y
+    tablet en segundos y al móvil en 1-2 min (Android agrupa los cambios para ahorrar batería). El del router llegó
+    solo a la laptop: es lo correcto, esa carpeta no se comparte con los móviles.
+  - Se borraron los dos archivos: el borrado llegó a todos en 20 s.
+  - Dirección contraria: en la PC hay archivos cuya última versión viene del móvil (`.obsidian/core-plugins.json`)
+    y de la laptop (`_hub/servidor.json`), y la PC no está desfasada en ninguno.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `docs/BITACORA.md` | Conflicto resuelto: las 3 entradas de la laptop y después la del cortacircuitos |
+| `~/Boveda/.stignore` (fuera del repo) | Ignora `.obsidian/workspace.*` y `.obsidian/workspace-mobile*` |
+| Syncthing de la PC (`gui debugging`) | Se encendió solo durante la prueba y se volvió a apagar |
+
+**Decisiones y por qué**
+- **`--ff-only` y no `merge` normal:** si la rama hubiera divergido, el comando falla en vez de crear un commit de
+  fusión sin permiso. Aquí no divergía.
+- **Depuración de Syncthing encendida un rato en vez de usar su API REST:** la API pide la clave de `config.xml`
+  y la regla del proyecto es no leer claves. `syncthing cli` se autentica solo; `cli debug file` (que dice qué
+  equipos tienen la versión actual de un archivo, `availability`) necesita el modo depuración, así que se encendió
+  para la prueba y se apagó al terminar.
+- **La entrada del cortacircuitos va al final:** se confirma después de los commits de la laptop, y así el orden de la
+  bitácora coincide con el de git.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| `docs/BITACORA.md` cambiado en los dos lados (ambos agregaban al final) | Se tomó la versión de la rama y se le agregó la entrada local; sin marcas de conflicto |
+| `syncthing cli debug file` respondía 403 ("Debugging disabled") y la primera prueba parecía no sincronizar | Era la consulta, no la sincronización: `syncthing cli config gui debugging set true` y después `false` |
+
+**Resultado:** 251 pruebas de `core` pasan (1 omitida) con el código de la rama y el cortacircuitos juntos.
+
+**Confirmar y subir (lo ejecuta el usuario):**
+```bash
+git status -sb                      # qué cambió y cuántos commits vamos por delante de GitHub
+git add core/app/estado/db.py core/app/proveedores/cadena.py core/app/main.py \
+        core/tests/test_imagenes.py docs/BITACORA.md
+git diff --cached --stat            # revisar lo que entra en el commit (solo esos 5 archivos)
+git commit -m "Cortacircuitos en la cadena de imágenes (día 6, parte 1)" \
+  -m "Integra la rama laptop-servidor en la bitácora y registra la prueba de sincronización." \
+  -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git push                            # sube los 4 commits de la laptop y este
+git push origin --delete laptop-servidor   # opcional: la rama remota ya está dentro de main
+```
+- `git add` elige qué cambios entran en el próximo commit (el "área de preparación"). Se nombran los archivos uno
+  por uno para no subir nada por accidente.
+- `git commit` guarda esa foto en el historial local. Cada `-m` es un párrafo del mensaje; el último, la autoría.
+- `git push` envía a GitHub los commits locales que aún no tiene. Como `main` avanzó por *fast-forward*, no hace
+  falta forzar nada.
+- `git push origin --delete laptop-servidor` borra la rama en GitHub. No se pierde nada, porque sus commits ya
+  están en `main`.
+
+En la laptop, después: `git switch main`, `git pull` y `git branch -d laptop-servidor` (`-d` se niega a borrar si
+la rama tuviera algo que no está en `main`). Luego `.\hub.ps1 arrancar` para reconstruir `core` con el cortacircuitos.
+
+**Cómo probarlo:** `git log --oneline -6` muestra los 4 commits de la laptop sobre `84e0523`. Al arrancar,
+`./hub.sh arrancar` reconstruye OpenClaw con el plugin dentro; `docker compose logs openclaw | grep hub-puente` debe
+listarlo entre los 3 plugins.
+
+**Qué aprendiste: *fast-forward*.** Si tu rama no tiene commits propios desde que salió la otra, fusionar es solo mover
+la etiqueta `main` hacia adelante: no hay nada que combinar ni commit nuevo. Los conflictos vienen de los cambios sin
+confirmar, por eso se guardan antes en un *stash* y se reaplican después.

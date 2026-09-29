@@ -16,8 +16,9 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from app.acciones import personajes
 from app.acciones.imagenes import GeneradorImagenes, referente
 from app.boveda import escritor
-from app.proveedores.cadena import (CadenaImagenes, ErrorProveedor, Imagen, SinProveedores,
-                                    crear_cadena, extension_de)
+from app.estado.db import Estado
+from app.proveedores.cadena import (CadenaImagenes, Cortacircuitos, ErrorProveedor, Imagen,
+                                    SinProveedores, crear_cadena, extension_de)
 from app.proveedores.cloudflare_img import CloudflareImagen
 from app.proveedores.tensorart_img import TensorArtImagen, firmar
 from app.router.reglas import renombrar_imagen
@@ -72,6 +73,71 @@ def test_cadena_sin_proveedores_reune_los_motivos():
     diag = _correr(cadena.diagnosticar())
     assert diag == [("a", "sin configurar: sin clave"), ("b", "ok")]
 
+
+
+# --- cortacircuitos ----------------------------------------------------------------
+class Reloj:
+    def __init__(self):
+        self.t = 1_000_000.0
+
+    def __call__(self):
+        return self.t
+
+
+def _cadena_con_corte(tmp_path, *proveedores):
+    reloj = Reloj()
+    corte = Cortacircuitos(Estado(tmp_path / "hub.sqlite3"), fallos=3, espera_min=5, reloj=reloj)
+    return CadenaImagenes(list(proveedores), corte), reloj
+
+
+def test_cortacircuitos_pausa_tras_tres_fallos_y_salta_al_siguiente(tmp_path):
+    roto = ProveedorFalso("chatgpt", error=ErrorProveedor("HTTP 502"))
+    bueno = ProveedorFalso("cloudflare", Imagen(PNG, ".png", "cloudflare", "m"))
+    cadena, reloj = _cadena_con_corte(tmp_path, roto, bueno)
+    for _ in range(3):
+        _correr(cadena.generar("gato"))
+    assert roto.llamadas == 3
+    assert _correr(cadena.generar("gato")).proveedor == "cloudflare"
+    assert roto.llamadas == 3                       # en pausa: ni se llama
+    reloj.t += 5 * 60 + 1                           # pasa la pausa: se prueba una vez
+    _correr(cadena.generar("gato"))
+    assert roto.llamadas == 4
+    _correr(cadena.generar("gato"))
+    assert roto.llamadas == 4                       # volvió a fallar: otra pausa
+
+
+def test_cortacircuitos_da_el_motivo_y_se_reinicia_con_un_exito(tmp_path):
+    prov = ProveedorFalso("chatgpt", error=ErrorProveedor("HTTP 502"))
+    cadena, reloj = _cadena_con_corte(tmp_path, prov)
+    for _ in range(3):
+        with pytest.raises(SinProveedores):
+            _correr(cadena.generar("gato"))
+    with pytest.raises(SinProveedores) as e:
+        _correr(cadena.generar("gato"))
+    assert "en pausa hasta las" in e.value.fallos[0][1] and "HTTP 502" in e.value.fallos[0][1]
+    assert "en pausa" in _correr(cadena.diagnosticar())[0][1]
+    reloj.t += 5 * 60 + 1
+    prov.error, prov.resultado = None, Imagen(PNG, ".png", "chatgpt", "m")
+    _correr(cadena.generar("gato"))
+    assert cadena.cortacircuitos.estado.estado_proveedor("chatgpt") == (0, 0.0, "")
+    prov.error = ErrorProveedor("HTTP 502")         # un fallo suelto ya no pausa
+    with pytest.raises(SinProveedores):
+        _correr(cadena.generar("gato"))
+    assert cadena.cortacircuitos.en_pausa("chatgpt") is None
+
+
+def test_cortacircuitos_no_cuenta_la_falta_de_configuracion(tmp_path):
+    cadena, _ = _cadena_con_corte(tmp_path, ProveedorFalso("chatgpt", falta="sin token"))
+    for _ in range(4):
+        with pytest.raises(SinProveedores):
+            _correr(cadena.generar("gato"))
+    assert cadena.cortacircuitos.estado.estado_proveedor("chatgpt")[0] == 0
+
+
+def test_crear_cadena_usa_el_cortacircuitos_de_config(cfg, tmp_path):
+    assert crear_cadena(cfg, {}).cortacircuitos is None
+    corte = crear_cadena(cfg, {}, estado=Estado(tmp_path / "hub.sqlite3")).cortacircuitos
+    assert (corte.umbral, corte.espera_s) == (3, 300)
 
 def test_crear_cadena_respeta_orden_y_activo(cfg):
     # MVP: solo la suscripción de ChatGPT; cloudflare y tensorart desactivados en config.yaml.

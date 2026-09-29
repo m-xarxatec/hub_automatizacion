@@ -94,7 +94,7 @@ async def principal() -> int:
         llm = None
     router = Router(cfg, ajustes.datos / "router", llm=llm)
     ollama_prompts = Ollama(ajustes.ollama_url, cfg_llm["modelo"], timeout=30) if llm_activo else None
-    imagenes = GeneradorImagenes(boveda, crear_cadena(cfg), ollama_prompts)
+    imagenes = GeneradorImagenes(boveda, crear_cadena(cfg, estado=estado), ollama_prompts)
     ctx = telegram_bot.Contexto(ajustes, cfg, boveda, estado, router, imagenes,
                                 ClienteVoz(ajustes.voz_url, vocabulario=cfg["voz"].get("vocabulario") or ""),
                                 openclaw)
