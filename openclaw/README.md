@@ -14,7 +14,8 @@ que no salen del equipo (`openclaw_estado` y `openclaw_claude`).
 ## Cómo lo usa core: el plugin puente
 
 `core` **no** usa el agente de OpenClaw: su prompt propio suma ~5.700 tokens a cada mensaje.
-Usa el plugin del hub `plugins/hub-puente/` (montado en solo lectura por `docker-compose.yml`),
+Usa el plugin del hub `plugins/hub-puente/` (copiado en la imagen por `openclaw/Dockerfile`: si
+lo cambias, `docker compose build openclaw`; montado, Windows lo deja con permisos 777 y OpenClaw lo bloquea),
 que expone `POST /hub/completar` (protegido con el token del gateway) y llama al modelo con
 solo nuestro prompt:
 

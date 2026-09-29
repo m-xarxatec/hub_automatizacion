@@ -14,4 +14,9 @@ RUN npm install -g @anthropic-ai/claude-code \
 # La carpeta del volumen openclaw_claude debe existir y ser de node: si no, Docker la crea
 # como root y el /login de Claude Code no puede guardar la sesión.
 RUN mkdir -p /home/node/.claude && chown node:node /home/node/.claude
+# Plugin puente dentro de la imagen y no montado: en Windows, Docker Desktop monta las
+# carpetas con permisos 777 y OpenClaw bloquea un plugin escribible por cualquiera.
+# De root y sin escritura para otros; tras cambiar el plugin hay que reconstruir.
+COPY plugins/hub-puente /home/node/hub-puente
+RUN chmod -R u=rwX,go=rX /home/node/hub-puente
 USER node

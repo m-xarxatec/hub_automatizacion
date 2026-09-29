@@ -66,8 +66,8 @@ services:
     volumes:
       - openclaw_estado:/home/node/.openclaw
       - openclaw_claude:/home/node/.claude
-      # Plugin puente: core llama al modelo sin el prompt del agente (POST /hub/completar)
-      - ./openclaw/plugins/hub-puente:/home/node/hub-puente:ro
+      # El plugin puente (core llama al modelo sin el prompt del agente, POST /hub/completar)
+      # va copiado en la imagen, no montado: ver openclaw/Dockerfile.
     restart: unless-stopped
 
   voz:

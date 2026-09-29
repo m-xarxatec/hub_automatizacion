@@ -26,7 +26,7 @@
   tools: { profile: "minimal", allow: [] },
   // Solo cargan los plugins de ChatGPT (codex), Claude (anthropic) y el puente del hub.
   plugins: {
-    // Plugin propio del hub, montado desde openclaw/plugins/hub-puente (docker-compose.yml)
+    // Plugin propio del hub, copiado desde openclaw/plugins/hub-puente (openclaw/Dockerfile)
     load: { paths: ["/home/node/hub-puente"] },
     entries: {
       "hub-puente": {
