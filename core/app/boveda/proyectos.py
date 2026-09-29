@@ -10,8 +10,9 @@ from zoneinfo import ZoneInfo
 from . import escritor
 
 STIGNORE = """// Generado por hub-creativo. No sincronizar estado de la interfaz ni temporales.
-.obsidian/workspace.json
-.obsidian/workspace-mobile.json
+// Con "*" también se ignoran sus copias .sync-conflict (móvil y tablet escriben cada uno el suyo).
+.obsidian/workspace.*
+.obsidian/workspace-mobile*
 .trash/
 *.tmp
 """

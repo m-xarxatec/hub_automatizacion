@@ -1486,3 +1486,36 @@ Y `/reentrenar`. Probado sobre una copia temporal: une y no repite.
 **Qué aprendiste: medir antes de entrenar.** Un ejemplo que el modelo ya acierta con seguridad no le aporta nada.
 Probar primero las frases sin gastar tokens muestra dónde está el hueco de verdad, y ahí se concentra el
 esfuerzo (y los tokens).
+
+## 2026-09-29 — Syncthing con PC, laptop, móvil y tablet: conflictos resueltos
+
+**Qué se hizo**
+- Bóveda compartida entre PC (`3vil4n0n`), laptop, móvil (Pixel 10 Pro XL) y tablet (SM-X920), y carpeta del router
+  solo entre PC y laptop (ID `axe3j-2cugq`, creado por la PC; da igual que no sea `hub-router`).
+- Conflictos revisados uno a uno antes de borrar nada:
+  - router: los aprendidos de la PC (4) quedaron en una copia de conflicto porque no se renombraron antes de compartir;
+    se unieron con `guardar_aprendido` (5 en total, sin repetidos) y luego se borró la copia;
+  - `_hub/servidor.json` (×3): latido viejo de la PC; `.obsidian/core-plugins.json`: el móvil añadía `"webviewer": false`;
+  - `.obsidian/workspace-mobile.json`: móvil y tablet escriben cada uno sus pestañas abiertas.
+- El `.stignore` de la bóveda pasa a ignorar también las copias de conflicto de esos archivos de interfaz.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/boveda/proyectos.py` | `STIGNORE`: `.obsidian/workspace.*` y `.obsidian/workspace-mobile*` (antes, el nombre exacto) |
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| La copia `workspace-mobile.sync-conflict-….json` no coincidía con `.obsidian/workspace-mobile.json` y viajaba a todos | Patrón con `*`. `workspaces.json` (plugin Workspaces) sigue sincronizándose |
+| Si se ignora un archivo antes de borrarlo, el borrado no se propaga | Primero borrar y esperar 100 % en todos los equipos; después cambiar el `.stignore` |
+| `core` solo crea el `.stignore` si no existe | En equipos que ya lo tienen hay que editarlo a mano (laptop hecho; PC pendiente) |
+
+**Resultado:** 0 conflictos; bóveda al 100 % en PC, móvil y tablet. 50 pruebas (`test_boveda`, `test_bot`) pasan con
+el código nuevo montado en el contenedor.
+
+**Qué aprendiste: un conflicto de Syncthing también es un archivo.** Su nombre cambia (`.sync-conflict-…`), así que
+un patrón exacto no lo cubre y se sincroniza como cualquier otro. Y los archivos de estado de cada dispositivo
+(pestañas abiertas) no deberían viajar: cada equipo tiene el suyo.
