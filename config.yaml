@@ -121,3 +121,14 @@ limpieza:
 latido:
   intervalo_s: 60
   vigencia_s: 180
+
+# Relevo entre servidores: el equipo "de guardia" deja el bot cuando otro lo toma (p. ej. la laptop en
+# una presentación), espera sincronizando con Syncthing y lo retoma solo cuando ese otro se apaga
+# (`hub parar`: en ~30-45 s; si se apaga de golpe, cuando su latido cumple vigencia_s).
+relevo:
+  activo: true            # false = el arranque de siempre (el segundo equipo no arranca)
+  ceden: [pc-casa]        # equipos de guardia (su SERVIDOR_NOMBRE)
+  revisar_s: 5            # cada cuánto se miran los latidos de los otros equipos
+  sondeo_s: 8             # antes de retomar el bot, escucha a Telegram para ver si otro lo lee
+  avisar: true            # mensaje en Telegram en cada relevo
+  llevar_proyecto: true   # quien toma el bot sigue en el proyecto activo de cada chat

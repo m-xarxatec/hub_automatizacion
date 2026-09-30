@@ -15,6 +15,7 @@ from .boveda.proyectos import Boveda
 from .entradas import telegram_bot
 from .entradas.web import servidor as web
 from .estado import latido, limpieza
+from .estado.relevo import Relevo, adoptar_en
 from .estado.db import Estado, contador_de_uso
 from .acciones.imagenes import GeneradorImagenes
 from .proveedores.cadena import crear_cadena
@@ -69,7 +70,13 @@ async def principal() -> int:
     boveda.asegurar_base()
 
     vigencia = int(cfg["latido"].get("vigencia_s", 180))
-    choque = latido.conflicto(boveda.interna, ajustes.servidor_nombre, vigencia)
+    intervalo = int(cfg["latido"].get("intervalo_s", 60))
+    # Relevo entre servidores (estado/relevo.py): el equipo de guardia cede el bot y lo retoma solo.
+    cfg_relevo = cfg.get("relevo") or {}
+    relevo = (Relevo(boveda.interna, ajustes.servidor_nombre, cfg_relevo, vigencia, intervalo)
+              if cfg_relevo.get("activo") else None)
+    choque = (relevo.choque_al_arrancar() if relevo
+              else latido.conflicto(boveda.interna, ajustes.servidor_nombre, vigencia))
     if choque and not ajustes.forzar_arranque:
         log.error(choque)
         return 2
@@ -121,19 +128,25 @@ async def principal() -> int:
     ctx = telegram_bot.Contexto(ajustes, cfg, boveda, estado, router, imagenes,
                                 ClienteVoz(ajustes.voz_url, vocabulario=cfg["voz"].get("vocabulario") or ""),
                                 openclaw, interprete, redactor)
+    ctx.relevo = relevo
     bot, dp = telegram_bot.crear_bot(ctx)
+    if relevo:
+        relevo.conectar(bot, ajustes.usuarios, proyectos=estado.proyectos_activos,
+                        adoptar=adoptar_en(estado, boveda.listar_proyectos, ajustes.usuarios))
 
-    error = await telegram_bot.preparar(bot)
+    # Con relevo no se comprueba aquí si otro lee el bot: de eso se encarga el relevo (409 y sondeo).
+    error = await telegram_bot.preparar(bot, comprobar_lector=relevo is None)
     if error:
         log.error(error)
         await bot.session.close()
         return 3
 
-    latido.escribir(boveda.interna, ajustes.servidor_nombre)
+    if relevo is None:
+        latido.escribir(boveda.interna, ajustes.servidor_nombre)
     web_srv = web.servidor(web.crear_app(ajustes.servidor_nombre))
     tareas = [
-        asyncio.create_task(latido.bucle(boveda.interna, ajustes.servidor_nombre,
-                                         int(cfg["latido"].get("intervalo_s", 60)))),
+        asyncio.create_task(relevo.bucle_latido() if relevo
+                            else latido.bucle(boveda.interna, ajustes.servidor_nombre, intervalo)),
         asyncio.create_task(limpieza.bucle(ajustes.datos, boveda.raiz, cfg["limpieza"], ajustes.zona)),
         asyncio.create_task(web_srv.serve()),
     ]
@@ -142,10 +155,14 @@ async def principal() -> int:
         tareas.append(asyncio.create_task(telegram_bot.vigilar_conflictos(bot, ctx, revisar_s)))
     if ollama_prompts:
         tareas.append(asyncio.create_task(ollama_prompts.precargar()))
-    log.info("Hub activo en '%s'. Bóveda: %s. Router: %s", ajustes.servidor_nombre,
+    log.info("Hub activo en '%s'%s. Bóveda: %s. Router: %s", ajustes.servidor_nombre,
+             " (de guardia: cede el bot si otro equipo lo toma)" if relevo and relevo.guardia else "",
              ajustes.boveda, router.motor)
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        if relevo:
+            await relevo.correr(dp, bot, allowed_updates=dp.resolve_used_update_types())
+        else:
+            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         web_srv.should_exit = True
         for t in tareas:

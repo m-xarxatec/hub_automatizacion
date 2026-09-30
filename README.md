@@ -15,7 +15,8 @@ laptop y el móvil. Todo corre en Docker: **el equipo donde se levanta es el ser
   limpiar, diagnóstico) lo resuelve el router local sin tokens.
 - Imágenes como referencia; con un pie como *"referencia para Zamael"* se insertan en su ficha
   (`Personajes/Zamael.md`; si no existe, ofrece crearla).
-- Latido del servidor, bloqueo si otro equipo ya está activo (error 409 de Telegram).
+- Latido del servidor y **relevo**: la PC (de guardia) cede el bot cuando la laptop lo toma y lo
+  retoma sola cuando la laptop se apaga (error 409 de Telegram + latidos en `_hub/`).
 - Limpieza diaria de temporales, registros en JSON, estado en SQLite.
 - Ollama con Qwen2.5 3B **dormido**: no arranca con el stack para no competir por recursos con la
   voz y el router (perfil `llm-local`; queda como posible respaldo después del MVP).
@@ -127,7 +128,7 @@ móvil). El modelo (~470 MB) no viaja: cada equipo lo reconstruye con `/reentren
 2. Compartirla entre la PC y la laptop.
 3. Al cambiar de servidor: esperar *Actualizada*, luego `/estado` y, si hay pendientes, `/reentrenar`.
 
-Solo un equipo es servidor a la vez (latido y 409), así que nunca escriben los dos a la vez.
+Solo un equipo atiende el bot a la vez (latido, 409 y relevo), así que nunca escriben los dos a la vez.
 **La primera vez**, si los dos equipos ya tienen esos archivos, renombra los de uno antes de
 compartir y únelos después (ver `docs/BITACORA.md`, 2026-09-29), o Syncthing creará un
 `.sync-conflict`. Frases para entrenarlo: [`lista_entrenamiento.md`](lista_entrenamiento.md).
@@ -184,7 +185,8 @@ Repite los pasos en la laptop con su propio `.env` (misma bóveda vía Syncthing
 | --- | --- | --- |
 | Levantar con GPU | `./hub.sh arrancar` | `.\hub.ps1 arrancar` |
 | Levantar sin GPU | `./hub.sh arrancar-cpu` | `.\hub.ps1 arrancar-cpu` |
-| Detener todo | `./hub.sh parar` | `.\hub.ps1 parar` |
+| Detener todo (con relevo, espera a que retome el de guardia) | `./hub.sh parar` | `.\hub.ps1 parar` |
+| Quién atiende el bot, quién espera | `./hub.sh servidores` | `.\hub.ps1 servidores` |
 | Reiniciar tras cambiar `config.yaml` o `.env` | `./hub.sh reiniciar` | `.\hub.ps1 reiniciar` |
 | Ver registros | `./hub.sh logs` | `.\hub.ps1 logs` |
 | Verificar el equipo | `./hub.sh chequeo` | `.\hub.ps1 chequeo` |
@@ -196,16 +198,24 @@ Repite los pasos en la laptop con su propio `.env` (misma bóveda vía Syncthing
 
 Si Windows bloquea el script: `powershell -ExecutionPolicy Bypass -File .\hub.ps1 arrancar`.
 
-### Mover el servidor de la PC a la laptop
+### Mover el servidor de la PC a la laptop (relevo)
 
-1. En la PC: `./hub.sh parar`.
-2. Esperar a que Syncthing marque la carpeta como *Actualizada* en la laptop.
-3. En la laptop: `.\hub.ps1 arrancar`.
+La PC queda encendida como servidor **de guardia** (`relevo.ceden: [pc-casa]` en `config.yaml`).
+No hace falta tocarla:
 
-Si se olvida el paso 1, la laptop no arranca: el latido de la PC (`_hub/servidor-pc-casa.json`)
-o el error 409 de Telegram lo impiden, y Docker reintenta solo hasta que la PC se detenga.
-Conviene que los dos equipos tengan la misma versión del código: hasta el 2026-09-30 el latido
-era un único `_hub/servidor.json` (el código nuevo lo sigue leyendo).
+1. En la laptop, con la bóveda ya *Actualizada* en Syncthing: `.\hub.ps1 arrancar`. La laptop toma
+   el bot; la PC recibe el error 409 y en uno o dos segundos pasa a **espera** (sigue sincronizando,
+   no lee Telegram). Por Telegram llega *"Ahora atiende laptop. pc-casa queda en espera…"* y la laptop
+   sigue en el proyecto activo que tenía la PC.
+2. Al terminar: `.\hub.ps1 parar`. La laptop deja su latido en `apagado`; la PC lo recibe por
+   Syncthing, comprueba que el bot quedó libre y vuelve a atender (*"Vuelve a atender pc-casa: laptop
+   se apagó."*). El script espera esa confirmación (~30-60 s): **no apagues la laptop antes del ✓**.
+3. Si la laptop se apaga de golpe, la PC retoma el bot sola cuando el latido de la laptop cumple
+   3 minutos.
+
+Los dos equipos necesitan el código del 2026-09-30 o posterior. Con `relevo.activo: false` vuelve el
+esquema anterior: parar la PC, esperar a Syncthing y arrancar la laptop (si no, el latido de la PC o
+el 409 impiden arrancar y Docker reintenta hasta que la PC se detenga).
 
 ### Comandos del bot
 
@@ -240,18 +250,18 @@ hub-creativo/
   docker-compose.yml       servicios: core, voz, openclaw (perfil consulta), ollama (perfil llm-local, dormido)
   docker-compose.gpu.yml   GPU NVIDIA para ollama (solo si se activa)
   .env.example             variables por equipo (copiar a .env)
-  config.yaml              umbrales, proveedores, limpieza, latido
+  config.yaml              umbrales, proveedores, limpieza, latido, relevo
   hub.sh / hub.ps1         atajos de comandos
   core/                    bot, router, bóveda, estado (Python 3.12)
     app/
-      main.py              arranque: bot + web + latido + limpieza
+      main.py              arranque: bot + web + latido + relevo + limpieza
       entradas/            telegram_bot.py, web/
       router/              reglas, cascada, clasificador SetFit, llm_local, ejemplos
       acciones/            referencias.py (listo), imagenes, consulta, analisis...
       proveedores/         cadenas y clientes de APIs (días 3-5)
       boveda/              escritor.py, proyectos.py
-      estado/              db.py, latido.py, limpieza.py
-    scripts/               chequeo, descargar_modelos, generar_token, entrenar_router
+      estado/              db.py, latido.py, relevo.py, limpieza.py
+    scripts/               chequeo, descargar_modelos, generar_token, entrenar_router, relevo
     tests/                 48 pruebas rápidas + 1 lenta, incluido el bot completo sin internet
   openclaw/                Dockerfile y guía de configuración (día 5)
   voz/                     servicio de voz (fase 2)
@@ -282,7 +292,9 @@ Los módulos pendientes tienen en su cabecera qué deben hacer y en qué día.
 | Síntoma | Causa y solución |
 | --- | --- |
 | `Otro proceso está leyendo este bot (409)` | El stack sigue activo en el otro equipo, o hay un OpenClaw fuera del proyecto con canal de Telegram. Detenerlo. |
-| `El equipo 'pc-casa' escribió un latido hace…` | Hacer `parar` en ese equipo. Si está apagado de verdad, `FORZAR_ARRANQUE=1` una vez. |
+| `El equipo 'pc-casa' escribió un latido hace…` | Ese equipo atiende y no es de guardia (o el relevo está apagado). Hacer `parar` allí. Si está apagado de verdad, `FORZAR_ARRANQUE=1` una vez. |
+| La PC no retoma el bot tras `parar` en la laptop | Syncthing no llegó a llevarle el `apagado` (¿laptop apagada antes del ✓?): lo retoma sola a los 3 min. Ver `./hub.sh servidores` y las líneas `Relevo:` de `./hub.sh logs`. |
+| `Relevo: otro proceso lee el bot y ningún latido lo explica` | La laptop atiende pero su latido no llega a la PC (Syncthing sin conexión), u otro proceso usa el token. La PC sigue en espera y reintenta cada 3, 6, 12… min. |
 | `Define VAULT_PATH en .env` | Falta la ruta. En Windows usar barras normales: `C:/Users/...`. |
 | `La bóveda no está montada` | En Windows, compartir la unidad en Docker Desktop (*Settings → Resources → File sharing*) si la bóveda está fuera de `C:\Users`. |
 | El bot no responde | `./hub.sh logs`. Si no hay errores, revisar que tu ID esté en `TELEGRAM_USUARIOS`. |
