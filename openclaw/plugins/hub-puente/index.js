@@ -21,6 +21,8 @@
 // OpenClaw no la guarda en disco; la guarda core en la bóveda.
 // Las dos rutas están protegidas con el token del gateway (auth: "gateway").
 
+import { sistemaEditorial } from "./redactor.js";
+
 const MAX_BYTES = 256 * 1024;   // peticiones de core: texto, sin imágenes
 const ROLES = new Set(["user", "assistant"]);
 const TIEMPO_POR_DEFECTO_S = 60;
@@ -146,7 +148,7 @@ export default {
           const limite = tiempoMs(c.tiempo_max_s);
           const r = await api.runtime.llm.complete({
             messages: mensajes,
-            systemPrompt: typeof c.sistema === "string" ? c.sistema : undefined,
+            systemPrompt: sistemaEditorial(c.sistema),
             model: typeof c.modelo === "string" ? c.modelo : undefined,
             reasoning: typeof c.razonamiento === "string" ? c.razonamiento : undefined,
             maxTokens: Number.isInteger(c.max_tokens) && c.max_tokens > 0 ? c.max_tokens : undefined,
