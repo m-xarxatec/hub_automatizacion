@@ -69,18 +69,10 @@ def cargar(carpeta: Path) -> Clasificador | None:
 
 
 def entrenar(textos: list[str], etiquetas: list[str], destino: Path, *,
-<<<<<<< HEAD
-             base: str = MODELO_BASE, iteraciones: int = 20, extra: dict | None = None,
-             liberar: Callable[[], None] | None = None) -> dict:
-    """Entrena y guarda el modelo en `destino`. Devuelve los metadatos del entrenamiento.
-
-    Se entrena en una carpeta temporal y solo al final se reemplaza la anterior:
-    si algo falla a mitad, el bot sigue con el modelo viejo. `liberar` suelta el modelo
-    en uso si hace falta para reemplazarlo (ver instalar()).
-=======
              base: str = MODELO_BASE, iteraciones: int = 20, epocas: int = 1,
              congelar_vocabulario: bool = False, extra: dict | None = None,
-             control: Callable[["Clasificador"], tuple[str | None, dict]] | None = None) -> dict:
+             control: Callable[["Clasificador"], tuple[str | None, dict]] | None = None,
+             liberar: Callable[[], None] | None = None) -> dict:
     """Entrena y guarda el modelo en `destino`. Devuelve los metadatos del entrenamiento.
 
     Se entrena en una carpeta temporal y solo al final se reemplaza la anterior:
@@ -92,7 +84,7 @@ def entrenar(textos: list[str], etiquetas: list[str], destino: Path, *,
     base grande cabe en una GPU de 4 GB.
     `control`: recibe el modelo nuevo antes de reemplazar al actual y devuelve (motivo, datos). Con
     un motivo, el nuevo se descarta y se lanza ModeloRechazado; los datos van a los metadatos.
->>>>>>> origin/main
+    `liberar`: suelta el modelo en uso si hace falta para reemplazarlo (ver instalar()).
     """
     if len(set(etiquetas)) < 2:
         raise ValueError("Hacen falta ejemplos de al menos dos acciones para entrenar.")

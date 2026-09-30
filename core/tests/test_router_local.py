@@ -177,13 +177,9 @@ def test_llm_local_acota_confianza_y_tolera_ollama_caido(cfg):
 def test_reentrenar_une_fuentes_y_recarga(cfg, tmp_path, monkeypatch):
     llamadas = {}
 
-<<<<<<< HEAD
-    def entrenar_falso(textos, etiquetas, destino, extra=None, liberar=None):
-        llamadas.update(textos=textos, etiquetas=etiquetas, destino=destino, liberar=liberar)
-=======
-    def entrenar_falso(textos, etiquetas, destino, extra=None, control=None, **opciones):
-        llamadas.update(textos=textos, etiquetas=etiquetas, destino=destino, opciones=opciones)
->>>>>>> origin/main
+    def entrenar_falso(textos, etiquetas, destino, extra=None, control=None, liberar=None, **opciones):
+        llamadas.update(textos=textos, etiquetas=etiquetas, destino=destino, opciones=opciones,
+                        liberar=liberar)
         return {"ejemplos": len(textos), **(extra or {})}
 
     monkeypatch.setattr(clasificador, "entrenar", entrenar_falso)
@@ -246,7 +242,7 @@ def test_instalar_bloqueado_sin_remedio_conserva_el_modelo_viejo(tmp_path, monke
 
 
 def test_reentrenar_fallido_tras_soltar_recarga_el_modelo_viejo(cfg, tmp_path, monkeypatch):
-    def entrenar_falso(textos, etiquetas, destino, extra=None, liberar=None):
+    def entrenar_falso(textos, etiquetas, destino, extra=None, control=None, liberar=None, **opciones):
         liberar()
         raise PermissionError(13, "Permission denied")
 

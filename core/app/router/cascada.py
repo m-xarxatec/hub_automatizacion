@@ -167,23 +167,13 @@ class Router:
         aprendidos = ejemplos.leer_aprendidos(self.carpeta)
         textos, etiquetas = ejemplos.unir(ejemplos.leer_ejemplos(ruta_ejemplos), correcciones,
                                           self.acciones, aprendidos)
-<<<<<<< HEAD
-        try:
-            metadatos = clasificador.entrenar(textos, etiquetas, self.carpeta_modelo,
-                                              extra={"correcciones": len(correcciones),
-                                                     "aprendidos": len(aprendidos)},
-                                              liberar=self._soltar_modelo)
-        except Exception:
-            if self.clasificador is None:   # se soltó para reemplazarlo (Windows) y falló: vuelve el viejo
-                self.clasificador = clasificador.cargar(self.carpeta_modelo)
-            raise
-=======
         # Una frase de prueba corregida con los botones se entrenaría: se saca de la medición.
         prueba = evaluacion.leer_pruebas()
         repetidas = set(evaluacion.solapadas(prueba, textos))
         prueba = [(t, a) for t, a in prueba if t not in repetidas]
         actual = self.clasificador
         medida_actual = evaluacion.medir(actual.predecir, prueba, self.umbral_ejecutar) if actual and prueba else None
+        del actual   # con el servidor en Windows, esta referencia impediría soltar el modelo (instalar())
 
         def control(nuevo: clasificador.Clasificador) -> tuple[str | None, dict]:
             if not prueba:
@@ -196,11 +186,15 @@ class Router:
 
         opciones = {k: self.entrenamiento[k] for k in ("base", "iteraciones", "epocas", "congelar_vocabulario")
                     if k in self.entrenamiento}
-        metadatos = clasificador.entrenar(textos, etiquetas, self.carpeta_modelo, **opciones,
-                                          extra={"correcciones": len(correcciones),
-                                                 "aprendidos": len(aprendidos)},
-                                          control=control)
->>>>>>> origin/main
+        try:
+            metadatos = clasificador.entrenar(textos, etiquetas, self.carpeta_modelo, **opciones,
+                                              extra={"correcciones": len(correcciones),
+                                                     "aprendidos": len(aprendidos)},
+                                              control=control, liberar=self._soltar_modelo)
+        except Exception:
+            if self.clasificador is None:   # se soltó para reemplazarlo (Windows) y falló: vuelve el viejo
+                self.clasificador = clasificador.cargar(self.carpeta_modelo)
+            raise
         self.clasificador = clasificador.cargar(self.carpeta_modelo)
         return metadatos
 
