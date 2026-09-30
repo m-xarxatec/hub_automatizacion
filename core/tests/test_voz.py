@@ -190,3 +190,28 @@ def test_nombre_respondido(frase, esperado):
 ])
 def test_tipo_nota_con_plurales(frase, tipo):
     assert tipo_nota(frase) == tipo
+
+
+def test_componer_pista_pone_los_nombres_primero_y_respeta_el_largo():
+    from app.voz.cliente import componer_pista
+    pista = componer_pista("zorro, villana", "Días del futuro pasado", ["Deacon", "Shirley", "Deacon"],
+                           ["Días del futuro pasado", "webtoon"])
+    assert pista == ("Proyecto Días del futuro pasado. Personajes: Deacon, Shirley. Otros proyectos: webtoon. "
+                     "zorro, villana")
+    assert componer_pista("zorro") == "zorro" and componer_pista("") == ""
+    # Sin pasar del máximo y sin cortar una frase a la mitad: lo que no cabe entero, no va.
+    larga = componer_pista("vocabulario " * 40, "P", ["Kael"], maximo=60)
+    assert larga == "Proyecto P. Personajes: Kael." and len(larga) <= 60
+
+
+def test_la_pista_de_cada_audio_reemplaza_al_vocabulario():
+    pedidos = []
+
+    def manejar(req):
+        pedidos.append(req)
+        return httpx.Response(200, json={"texto": "hola"})
+    cli = ClienteVoz("http://voz:8090", vocabulario="zorro", transport=httpx.MockTransport(manejar))
+    asyncio.run(cli.transcribir(b"audio", pista="Personajes: Deacon. zorro"))
+    asyncio.run(cli.transcribir(b"audio"))
+    assert pedidos[0].url.params["pista"] == "Personajes: Deacon. zorro"
+    assert pedidos[1].url.params["pista"] == "zorro"

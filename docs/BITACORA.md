@@ -2075,3 +2075,63 @@ Obsidian que no haya carpetas ni secciones vacías.
 idea, pero no se le confían las garantías: se le pide un plan en JSON y el código lo valida (solo agregar, dentro
 del proyecto, sin perder palabras) antes de tocar un archivo. Así se gana criterio sin perder seguridad, y si el
 modelo falla o se equivoca, el camino anterior sigue ahí.
+
+## 2026-09-30 — Voz: cobertura que no descarta, nombres del proyecto para Whisper e imagen a la ficha
+
+El usuario notó que con audios "le cuesta un poco". Los registros mostraron la causa: de 4 notas de voz, 3 se
+descartaron por el control de cobertura (29 %, 47 % y 57 %; mínimo 60 %) y se guardaron crudas, aunque el redactor
+las había organizado bien. Al hablar se usan futuros ("medirá, estará, será") que el redactor pasa a presente, y más
+relleno ("vale, vas a crear…"); para la cuenta de palabras eso parecía contenido perdido. También Whisper escribió
+"Dikon" por "Deacon", y una imagen pedida "para su ficha" quedó solo en `Imagenes/`.
+
+**Qué se hizo**
+- **Cobertura que no descarta:** si lo escrito deja fuera muchas palabras del mensaje, se guarda lo organizado y,
+  junto a lo primero que se escribe, el mensaje original en un callout plegable de Obsidian
+  (`> [!quote]- Tu audio transcrito original (fecha)`). En el chat se avisa. Umbral 50 % en voz y 60 % en texto;
+  los auxiliares del habla (será, estará, tendrá, podremos, llamar…) no cuentan como contenido y el nombre del
+  proyecto cuenta como escrito.
+- **Pista de Whisper por audio** (`voz/cliente.componer_pista`): proyecto activo, sus personajes (con alias) y los
+  demás proyectos, delante del vocabulario de `config.yaml`, sin pasar de 400 caracteres ni cortar una frase.
+- **Imagen a la ficha si se pide:** si el pedido menciona la ficha y la imagen es de un personaje con ficha, se
+  inserta en "## Referencias visuales" (`en_ficha`). Sin mencionarla, solo en `Imagenes/`.
+- **Fichas:** el redactor usa siempre una sección en las fichas (antes "maneja una moto" quedó como bloque suelto
+  con fecha al final).
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/acciones/redactor.py` | `Plan.cobertura`/`Plan.original`, `bloque_original`, umbral por origen, palabras del habla, regla de secciones en fichas |
+| `core/app/voz/cliente.py` | `componer_pista`; `transcribir(pista=)` |
+| `core/app/entradas/telegram_bot.py` | `pista_voz` en cada audio, `en_ficha` al generar imágenes, sin `SinCobertura` |
+| `core/tests/test_redactor.py`, `core/tests/test_voz.py`, `core/tests/test_bot.py` | 6 pruebas nuevas; la voz falsa registra la pista |
+| `config.yaml`, `GUIA.md` | Comentarios del vocabulario y de la cobertura |
+
+**Decisiones y por qué**
+- **No descartar nunca lo organizado:** descartar protegía contra ideas perdidas, pero tiraba también el orden, que
+  es lo que el usuario quiere. Guardar las dos cosas (la versión ordenada y el original plegado) cumple ambos fines.
+- **Nombres primero en la pista:** Whisper solo usa ~224 tokens de contexto previo y lo que más falla son los
+  nombres propios; el vocabulario general va detrás y se corta si no cabe.
+- **Imagen a la ficha solo si se pide:** el usuario no quiere que el bot haga cosas que no dijo.
+
+**Problemas encontrados**
+- La prueba "si pierde palabras" esperaba un bloque con título en `Historia.md`, pero el archivo no existía y el
+  redactor lo creó: la prueba se corrigió (el comportamiento era el correcto).
+
+**Resultado de las pruebas:** 314 pasan (1 omitida) en `.venv` y en la imagen reconstruida. Reales: (1) Kokoro dijo
+tres frases con "Díkon" y Whisper las transcribió sin y con la pista: la que salía "Dickon" pasó a "Deacon"; las
+otras dos ya salían bien. (2) El bot completo con los audios del usuario (el de "Días del futuro pasado" literal,
+los de Deacon reconstruidos): cobertura 100 %, 67 % y 67-75 %, nada descartado; premisa en `_proyecto.md`, ideas de
+la consulta en `Historia.md`, fichas de Deacon (familia, apariencia, otros datos) y Shirley enlazadas, "personaje
+femenino sin nombre" anotado en la historia y "¿cómo es Deacon?" respondido con sus notas. Scripts en
+`datos/pruebas/` (fuera de git).
+
+**Cómo probarlo:** recrear `core`; con un proyecto activo que tenga fichas, mandar audios describiendo personajes
+en futuro ("será…, medirá…"); revisar en Obsidian que todo quede ordenado y, si aparece un bloque "Tu audio
+transcrito original", que esté plegado junto a lo escrito. Pedir "una imagen de X para su ficha" y comprobar que
+aparece en "## Referencias visuales".
+
+**Qué aprendiste: una red de seguridad no debe romper lo que protege.** El control de cobertura evitaba perder
+ideas, pero al descartar el plan entero perdía el orden, que era el objetivo. La versión buena conserva ambos:
+aplica lo organizado y guarda el original a un lado, plegado. Medir con datos reales (los registros de cobertura)
+mostró el problema sin adivinar.

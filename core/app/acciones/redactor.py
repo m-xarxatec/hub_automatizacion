@@ -15,8 +15,10 @@ Lo que el modelo NO decide (lo impone el código):
   - Las rutas quedan dentro del proyecto (o de 00-Bandeja si no hay proyecto), con nombres válidos
     en Windows. Imagenes/, Analisis/ y tareas.md son del bot y no se tocan.
   - Las fichas nuevas van a la carpeta de personajes y llevan `tipo: personaje`.
-  - Cobertura: las palabras con contenido del mensaje deben aparecer en lo escrito. Si falta mucho,
-    no se aplica nada y quien llama guarda el mensaje tal cual (ninguna idea se pierde).
+  - Cobertura: las palabras con contenido del mensaje deberían aparecer en lo escrito. Si falta
+    mucho (el modelo pudo dejar fuera una idea), se guarda lo organizado y, junto a lo primero que
+    escribe, el mensaje original en un bloque plegable de Obsidian: ninguna idea se pierde y no se
+    tira el orden (cambiado el 2026-09-30: antes se descartaba todo y se guardaba el mensaje crudo).
 Si el modelo no responde, quien llama guarda la nota por tipo (esquema anterior).
 """
 
@@ -64,8 +66,9 @@ lo último que hizo el asistente. Decides qué escribir y dónde.
    ultima_accion.anteriores (p. ej. la respuesta de una consulta): guárdalo completo, sin resumirlo.
 7. Personajes con ficha mencionados en otro archivo: [[Nombre]] la primera vez en cada texto.
 8. agregar con "seccion" vacía: al final del archivo, con "titulo" (3 a 6 palabras) para el bloque. Con
-   "seccion" ("## Apariencia"): al final de esa sección (se crea si no existe), sin título. Markdown
-   simple: párrafos o viñetas, sin encabezados de nivel 1.
+   "seccion" ("## Apariencia"): al final de esa sección (se crea si no existe), sin título. En una ficha
+   de personaje usa siempre "seccion" (la que ya exista y corresponda, o una nueva), nunca un bloque al
+   final. Markdown simple: párrafos o viñetas, sin encabezados de nivel 1.
 9. avisos: si lo nuevo contradice lo escrito (especie, edad, parentesco…), explícalo en una frase. Igual
    guarda lo nuevo.
 10. respuesta: una frase breve de lo que hiciste ("Anoté la escena en Historia y creé la ficha de Kael."),
@@ -85,8 +88,12 @@ ORDEN = {
     "documento", "ficha", "personaje", "llamado", "llamada", "llama", "dentro", "carpeta", "tambien",
     "ademas", "entonces", "bueno", "pues", "vale", "okay", "ahora", "aparte", "nuevo", "nueva", "idea",
     "ideas", "historia", "favor", "porfa", "podrias", "puedes", "hazme", "ponle", "ponlo", "pon",
+    # Auxiliares del habla ("será un tipo…", "se va a llamar…"): el redactor los pasa a presente.
+    "sera", "seran", "estara", "estaran", "tendra", "tendran", "podemos", "podremos", "vamos",
+    "llamar", "llamara", "acabas", "acabo", "dijiste",
 }
-UMBRAL_COBERTURA = 0.6
+# Por debajo de esto se guarda también el mensaje original. La voz lleva más relleno y futuros.
+UMBRAL_COBERTURA = {"voz": 0.5, "texto": 0.6}
 MIN_PALABRAS_COBERTURA = 4
 MAX_OPERACIONES = 8
 
@@ -108,10 +115,8 @@ class Plan:
     pregunta: str = ""
     avisos: list[str] = field(default_factory=list)
     descartadas: int = 0     # operaciones inválidas que no se aplican (fuera del proyecto, vacías…)
-
-
-class SinCobertura(ValueError):
-    """Lo que propuso el modelo deja fuera demasiado del mensaje: no se aplica."""
+    cobertura: float = 1.0
+    original: str = ""       # con cobertura baja: el mensaje tal cual, para guardarlo junto a lo organizado
 
 
 # --- contexto ---------------------------------------------------------------------------
@@ -252,12 +257,21 @@ def _raices(texto: str) -> set[str]:
 
 
 def cobertura(mensaje: str, plan: Plan, base: Path) -> float:
+    """Parte de las palabras con contenido del mensaje que aparecen en lo escrito (rutas, secciones,
+    títulos y textos; también el nombre del proyecto, que ya está en la carpeta)."""
     buscadas = _raices(mensaje)
     if len(buscadas) < MIN_PALABRAS_COBERTURA:
         return 1.0
-    escrito = " ".join(f"{op.ruta.relative_to(base).as_posix()} {op.seccion} {op.titulo} {op.texto}"
-                       for op in plan.operaciones)
+    escrito = base.name + " " + " ".join(
+        f"{op.ruta.relative_to(base).as_posix()} {op.seccion} {op.titulo} {op.texto}" for op in plan.operaciones)
     return len(buscadas & _raices(escrito)) / len(buscadas)
+
+
+def bloque_original(mensaje: str, origen: str, marca: str) -> str:
+    """Callout plegable de Obsidian con el mensaje tal cual (se abre con un clic)."""
+    via = "audio transcrito" if origen == "voz" else "mensaje"
+    cuerpo = "\n".join(f"> {linea}".rstrip() for linea in mensaje.strip().splitlines())
+    return f"> [!quote]- Tu {via} original ({marca})\n{cuerpo}"
 
 
 # --- aplicar ------------------------------------------------------------------------------
@@ -266,8 +280,10 @@ def aplicar(boveda: Boveda, plan: Plan, proyecto: str | None, origen: str) -> li
     ahora = boveda.ahora()
     marca = f"{ahora.strftime('%Y-%m-%d %H:%M')} · {'voz' if origen == 'voz' else 'texto'}"
     rutas: list[Path] = []
-    for op in plan.operaciones:
+    for i, op in enumerate(plan.operaciones):
         texto = op.texto.strip()
+        if i == 0 and plan.original:   # junto a lo primero que se escribe, no suelto al final
+            texto += "\n\n" + bloque_original(plan.original, origen, ahora.strftime("%Y-%m-%d %H:%M"))
         if op.op == "crear" and op.ruta.exists():   # otra operación del mismo plan ya lo creó
             op.op = "agregar"
         if op.op == "crear":
@@ -304,8 +320,8 @@ class Redactor:
 
     async def planear(self, boveda: Boveda, mensaje: str, proyecto: str | None, origen: str,
                       ultima: dict | None = None, pista: dict | None = None) -> Plan | None:
-        """Plan validado, o None si el modelo no responde o responde algo inútil.
-        Lanza SinCobertura si lo propuesto deja fuera demasiado del mensaje."""
+        """Plan validado, o None si el modelo no responde o responde algo inútil. Si lo propuesto deja
+        fuera demasiado del mensaje, el plan lleva `original` (se guarda junto a lo organizado)."""
         entrada = {"mensaje": mensaje, "origen": "voz" if origen == "voz" else "texto",
                    "pista_del_interprete": pista or {},
                    **contexto(boveda, proyecto, mensaje, self.tope),
@@ -328,9 +344,11 @@ class Redactor:
         if not plan.operaciones and not plan.pregunta:
             return None
         if plan.operaciones:
-            nivel = cobertura(mensaje, plan, base_de(boveda, proyecto))
-            if nivel < UMBRAL_COBERTURA:
-                raise SinCobertura(f"cobertura {nivel:.0%}")
+            plan.cobertura = cobertura(mensaje, plan, base_de(boveda, proyecto))
+            if plan.cobertura < UMBRAL_COBERTURA["voz" if origen == "voz" else "texto"]:
+                plan.original = mensaje
+                log.warning("Redactor: cobertura %.0f%%; se guarda también el mensaje original",
+                            plan.cobertura * 100)
         return plan
 
 
@@ -339,6 +357,8 @@ def resumen(plan: Plan, rutas: list[Path], relativa) -> str:
     lineas = [plan.respuesta or "Listo, guardado."]
     lineas += [f"- {relativa(r)}" for r in rutas]
     lineas += [f"⚠ {a}" for a in plan.avisos]
+    if plan.original:
+        lineas.append("(Guardé también tu mensaje tal cual, plegado, por si se me escapó algo.)")
     return "\n".join(lineas)
 
 

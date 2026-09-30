@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from app.acciones import redactor
-from app.acciones.redactor import Plan, Redactor, SinCobertura
+from app.acciones.redactor import Plan, Redactor
 from app.boveda import escritor
 from app.proveedores.openclaw import Nivel, OpenClaw
 from app.router.interprete import Interpretacion
@@ -128,7 +128,7 @@ def test_cobertura_ignora_la_orden_y_detecta_lo_que_falta(boveda):
     assert redactor.cobertura(mensaje, completo, base) == 1.0
     recortado = redactor.validar({"operaciones": [
         {"op": "crear", "archivo": "Notas.md", "texto": "Un cazador."}]}, boveda, "Webtoon")
-    assert redactor.cobertura(mensaje, recortado, base) < redactor.UMBRAL_COBERTURA
+    assert redactor.cobertura(mensaje, recortado, base) < redactor.UMBRAL_COBERTURA["texto"]
     assert redactor.cobertura("anota esto", recortado, base) == 1.0   # sin palabras de contenido
 
 
@@ -195,15 +195,54 @@ def test_planear_sin_respuesta_o_sin_json_devuelve_none(boveda):
     assert asyncio.run(_redactor([vacio], []).planear(boveda, "hola", "Webtoon", "texto")) is None
 
 
-def test_planear_pregunta_o_rechaza_lo_que_pierde_palabras(boveda):
+def test_planear_pregunta_o_marca_el_original_si_pierde_palabras(boveda):
     _proyecto(boveda)
     pregunta = {"operaciones": [], "pregunta": "¿Cómo se llama el personaje?"}
     plan = asyncio.run(_redactor([pregunta], []).planear(boveda, "crea un personaje carnicero", "Webtoon", "texto"))
     assert plan.pregunta == "¿Cómo se llama el personaje?" and not plan.operaciones
+    mensaje = "Kael es un cazador de monstruos que perdona a una kitsune hermosa"
     pobre = {"operaciones": [_op("Historia.md", "Un cazador.")]}
-    with pytest.raises(SinCobertura):
-        asyncio.run(_redactor([pobre], []).planear(
-            boveda, "Kael es un cazador de monstruos que perdona a una kitsune hermosa", "Webtoon", "texto"))
+    plan = asyncio.run(_redactor([pobre], []).planear(boveda, mensaje, "Webtoon", "texto"))
+    assert plan.operaciones and plan.original == mensaje and plan.cobertura < 0.6   # no se descarta
+    completo = {"operaciones": [_op("Historia.md", "Kael, cazador de monstruos, perdona a una kitsune hermosa.")]}
+    plan = asyncio.run(_redactor([completo], []).planear(boveda, mensaje, "Webtoon", "texto"))
+    assert plan.original == "" and plan.cobertura == 1.0
+
+
+def test_la_voz_tolera_futuros_y_relleno(boveda):
+    """Audio real del 2026-09-30: el redactor pasa "medirá, estará, será" a presente."""
+    base = _proyecto(boveda)
+    _ficha(base, "Deacon")
+    mensaje = ("Deacon será un tipo de piel bronceada, medirá 1,85 m, estará totalmente tatuado excepto "
+               "la cara y manejará una moto.")
+    plan = redactor.validar({"operaciones": [
+        {"op": "agregar", "archivo": "Personajes/Deacon.md", "seccion": "Apariencia",
+         "texto": "Piel bronceada, mide 1,85 m y tiene todo el cuerpo tatuado salvo la cara. Maneja una moto."}]},
+        boveda, "Webtoon")
+    assert redactor.cobertura(mensaje, plan, base) >= redactor.UMBRAL_COBERTURA["voz"]
+    # "Se va a llamar Días del futuro pasado": el nombre del proyecto ya está en la carpeta.
+    boveda.crear_proyecto("Días del futuro pasado")
+    otra = boveda.carpeta_proyectos / "Días del futuro pasado"
+    premisa = redactor.validar({"operaciones": [_op("_proyecto.md", "Un hombre viaja en el tiempo…",
+                                                    titulo="Premisa de la historia")]},
+                               boveda, "Días del futuro pasado")
+    frase = ("Vale, vas a crear un nuevo proyecto que se va a llamar Días del futuro pasado y esta será "
+             "la premisa de la historia, esta que me acabas de dar.")
+    assert redactor.cobertura(frase, premisa, otra) == 1.0
+
+
+def test_con_cobertura_baja_el_original_va_plegado_junto_a_lo_primero(boveda):
+    carpeta = _proyecto(boveda)
+    aely = _ficha(carpeta, "Aely", "Elfa albina.")
+    plan = redactor.validar({"operaciones": [
+        {"op": "agregar", "archivo": "Personajes/Aely.md", "seccion": "Combate", "texto": "Pelea con hachas."},
+        {"op": "crear", "archivo": "Mundo.md", "texto": "El reino de Vel."}]}, boveda, "Webtoon")
+    plan.original = "ella pelea con dos hachas\ny el reino se llama Vel"
+    redactor.aplicar(boveda, plan, "Webtoon", "voz")
+    ficha = aely.read_text(encoding="utf-8")
+    assert "## Combate\n\nPelea con hachas.\n\n> [!quote]- Tu audio transcrito original (" in ficha
+    assert ficha.endswith("> ella pelea con dos hachas\n> y el reino se llama Vel\n")
+    assert "[!quote]" not in (carpeta / "Mundo.md").read_text(encoding="utf-8")   # solo una vez
 
 
 # --- en el bot -----------------------------------------------------------------------------
@@ -276,14 +315,16 @@ def test_si_el_redactor_falla_la_nota_se_guarda_como_antes(tmp_path, cfg, boveda
     assert "Nota (historia) agregada a Proyectos/Webtoon/Historia.md" in _textos(sesion)[-1]
 
 
-def test_si_el_redactor_pierde_palabras_se_guarda_el_mensaje_tal_cual(tmp_path, cfg, boveda):
-    pobre = {"operaciones": [_op("Historia.md", "Un templo.")], "respuesta": "Listo."}
+def test_si_el_redactor_pierde_palabras_se_guarda_lo_organizado_y_el_original(tmp_path, cfg, boveda):
+    pobre = {"operaciones": [_op("Historia.md", "Un templo.", titulo="El templo")], "respuesta": "Listo."}
     texto = "el templo flotante tiene raíces de cristal que cantan cuando llueve"
     ctx, dp, bot, sesion, _ = _bot_con_redactor(tmp_path, cfg, boveda, [pobre],
                                                 Interpretacion("nota", 0.95, contenido=texto, tipo="historia"))
     _run(dp, bot, _msg("/proyecto nuevo Webtoon"), _msg(texto))
     historia = (boveda.carpeta_proyectos / "Webtoon" / "Historia.md").read_text(encoding="utf-8")
-    assert texto in historia and "Un templo." not in historia
+    assert "# Historia\n\nUn templo.\n\n> [!quote]- Tu mensaje original (" in historia   # se crea con ambos
+    assert f"> {texto}\n" in historia
+    assert "Guardé también tu mensaje tal cual" in _textos(sesion)[-1]
 
 
 def test_nota_con_prefijo_va_directo_al_redactor_sin_interprete(tmp_path, cfg, boveda):
@@ -390,3 +431,32 @@ def test_recuerda_solo_las_ultimas_acciones_vigentes(tmp_path, cfg, boveda):
     assert u["n"] == 4 and [a["n"] for a in u["anteriores"]] == [3, 2]
     ctx.ultima[1][0]["hora"] -= telegram_bot.ULTIMA_TTL_S + 1        # la más reciente venció
     assert ctx.ultima_de(1)["n"] == 3
+
+
+def test_el_audio_lleva_los_nombres_del_proyecto_a_whisper(tmp_path, cfg, boveda):
+    from test_bot import _voz
+    ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
+    _run(dp, bot, _msg("/proyecto nuevo Días del futuro pasado"), _msg("/proyecto nuevo webtoon"),
+         _msg("/proyecto Días del futuro pasado"))
+    _ficha(boveda.carpeta_proyectos / "Días del futuro pasado", "Deacon", alias=["Dikon"])
+    _run(dp, bot, _voz(ctx, "dime mis tareas"))
+    assert ctx.voz.pistas == ["Proyecto Días del futuro pasado. Personajes: Deacon, Dikon. "
+                              "Otros proyectos: webtoon. zorro, villana"]
+
+
+def test_imagen_de_personaje_va_a_su_ficha_solo_si_se_pide(tmp_path, cfg, boveda):
+    from test_bot import SendPhoto, _con_imagenes
+    ctx, dp, bot, sesion, _ = _bot_con_redactor(
+        tmp_path, cfg, boveda, [],
+        Interpretacion("imagen", 0.95, prompt="Deacon, piel bronceada", nombre_imagen="Deacon"),
+        Interpretacion("imagen", 0.95, prompt="Deacon en su moto", nombre_imagen="Deacon"))
+    _con_imagenes(ctx, boveda)
+    _run(dp, bot, _msg("/proyecto nuevo Webtoon"))
+    ficha = _ficha(boveda.carpeta_proyectos / "Webtoon", "Deacon", "Protagonista.")
+    _run(dp, bot, _msg("crea una imagen de referencia de Dikon que va a estar dentro de su ficha"))
+    fotos = [m for m in sesion.enviados if isinstance(m, SendPhoto)]
+    assert "y en la ficha de Deacon" in fotos[-1].caption
+    assert ficha.read_text(encoding="utf-8").endswith("## Referencias visuales\n\n![[deacon1.jpg]]\n")
+    _run(dp, bot, _msg("hazme otra de Deacon en su moto"))                  # sin pedirlo: solo en Imagenes/
+    assert "ficha" not in [m for m in sesion.enviados if isinstance(m, SendPhoto)][-1].caption
+    assert "deacon2" not in ficha.read_text(encoding="utf-8")

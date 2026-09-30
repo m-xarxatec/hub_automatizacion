@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 import secrets
 import time
 from contextvars import ContextVar
@@ -50,7 +51,7 @@ from ..router import interprete as interp
 from ..router.interprete import Interpretacion, Interprete
 from ..router.reglas import (Decision, archivo_aparte, limpiar_tarea, nombre_respondido, orden_hablada,
                              pedido_personaje, renombrar_imagen, tipo_nota)
-from ..voz.cliente import ClienteVoz, ErrorVoz, para_hablar
+from ..voz.cliente import ClienteVoz, ErrorVoz, componer_pista, para_hablar
 
 log = logging.getLogger(__name__)
 
@@ -339,17 +340,14 @@ def crear_router(ctx: Contexto) -> Router:
 
     async def redactar(bot: Bot, chat: int, texto: str, origen: str, pista: dict[str, Any] | None = None,
                        respaldo: Callable[[], Awaitable[None]] | None = None) -> None:
-        """El redactor (LLM) decide qué escribir y dónde. Si no responde, o su propuesta deja fuera
-        parte del mensaje, se guarda como antes: `respaldo` o la nota por tipo."""
+        """El redactor (LLM) decide qué escribir y dónde. Si no responde, se guarda como antes:
+        `respaldo` o la nota por tipo. Si deja fuera parte del mensaje, va también el original."""
         proyecto = ctx.estado.proyecto_activo(chat)
         pista = {k: v for k, v in (pista or {}).items() if v}
         plan = None
         if ctx.redactor is not None:
             async with escribiendo(bot, chat):
-                try:
-                    plan = await ctx.redactor.planear(ctx.boveda, texto, proyecto, origen, ctx.ultima_de(chat), pista)
-                except redaccion.SinCobertura as e:
-                    log.warning("Redactor: propuesta descartada (%s); se guarda el mensaje tal cual", e)
+                plan = await ctx.redactor.planear(ctx.boveda, texto, proyecto, origen, ctx.ultima_de(chat), pista)
         if plan is None:
             if respaldo is not None:
                 await respaldo()
@@ -368,8 +366,8 @@ def crear_router(ctx: Contexto) -> Router:
             log.exception("Error escribiendo en la bóveda")
             await decir(bot, chat, f"No pude escribir en la bóveda: {e}")
             return
-        log.info("Redactor: %s en %d archivos%s", ", ".join(op.op for op in plan.operaciones), len(rutas),
-                 f", {len(plan.avisos)} avisos" if plan.avisos else "")
+        log.info("Redactor: %s en %d archivos, cobertura %.0f%%%s", ", ".join(op.op for op in plan.operaciones),
+                 len(rutas), plan.cobertura * 100, f", {len(plan.avisos)} avisos" if plan.avisos else "")
         ctx.recordar(chat, accion="nota", archivo=ctx.relativa(rutas[0]),
                      archivos=[ctx.relativa(r) for r in rutas], contenido=texto, pregunta=plan.pregunta)
         mensaje = redaccion.resumen(plan, rutas, ctx.relativa)
@@ -689,12 +687,33 @@ def crear_router(ctx: Contexto) -> Router:
             await decir(bot, chat, f"La imagen se generó, pero no pude guardarla en la bóveda: {e}")
             return
         ctx.recordar(chat, accion="imagen", imagen=r_img.nota.stem, prompt=r_img.prompt)
+        ficha = en_ficha(proyecto, idea, nombre, r_img)
         foto = BufferedInputFile(r_img.imagen.read_bytes(), filename=r_img.imagen.name)
         if _hablado.get():
             await bot.send_photo(chat, foto)
-            await decir(bot, chat, "", voz="Aquí está la imagen que pediste.")
+            await decir(bot, chat, "", voz="Aquí está la imagen que pediste." + (" También la puse en su ficha."
+                                                                                   if ficha else ""))
         else:
-            await bot.send_photo(chat, foto, caption=f"Guardada en {ctx.relativa(r_img.imagen)} ({r_img.proveedor})")
+            extra = f" y en la ficha de {ficha.stem}" if ficha else ""
+            await bot.send_photo(chat, foto, caption=f"Guardada en {ctx.relativa(r_img.imagen)}{extra} ({r_img.proveedor})")
+
+    def en_ficha(proyecto: str | None, idea: str, nombre: str | None, r_img: Any) -> Path | None:
+        """Si el pedido menciona la ficha ("…que va a estar dentro de su ficha") y la imagen es de un
+        personaje que la tiene, se inserta en "## Referencias visuales". Sin pedirlo, no (el usuario
+        no quiere que el bot haga cosas que no dijo)."""
+        if not proyecto or not re.search(r"\bfichas?\b", escritor.sin_acentos(idea).casefold()):
+            return None
+        for candidato in (nombre, re.sub(r"\d+$", "", r_img.nota.stem)):
+            hallado = referencias.buscar_personaje(ctx.boveda, candidato, proyecto) if candidato else None
+            if hallado:
+                try:
+                    referencias.insertar_en_personaje(hallado[1], r_img.imagen)
+                except OSError:
+                    log.exception("No se pudo poner la imagen en la ficha")
+                    return None
+                ctx.boveda.registrar_diario(f"Referencia visual de [[{hallado[1].stem}]] en {proyecto}")
+                return hallado[1]
+        return None
 
     async def nombrar_imagen(m: Message, nombre: str) -> None:
         nota = ctx.imagenes.ultima(ctx.estado.proyecto_activo(m.chat.id))
@@ -921,7 +940,7 @@ def crear_router(ctx: Contexto) -> Router:
             return
         medio = m.voice or m.audio
         try:
-            texto = await ctx.voz.transcribir(await _descargar(bot, medio.file_id))
+            texto = await ctx.voz.transcribir(await _descargar(bot, medio.file_id), pista=pista_voz(m.chat.id))
         except ErrorVoz as e:
             log.warning("No se pudo transcribir una nota de voz: %s", e)
             await decir(m.bot, m.chat.id, f"No pude transcribir la nota de voz: {e}")
@@ -935,6 +954,19 @@ def crear_router(ctx: Contexto) -> Router:
             return
         log.info("Nota de voz transcrita (%d caracteres)", len(texto))
         await procesar(m, bot, texto, "voz")
+
+    def pista_voz(chat: int) -> str:
+        """Nombres del proyecto activo y de sus personajes para que Whisper los escriba bien."""
+        proyecto = ctx.estado.proyecto_activo(chat)
+        nombres: list[str] = []
+        if proyecto:
+            for ficha in referencias.fichas_de(ctx.boveda, proyecto):
+                nombres += referencias.nombres_de(ficha)
+        try:
+            proyectos = ctx.boveda.listar_proyectos()
+        except OSError:
+            proyectos = []
+        return componer_pista(getattr(ctx.voz, "vocabulario", ""), proyecto, nombres, proyectos)
 
     async def procesar(m: Message, bot: Bot, texto: str, origen: str) -> None:
         """Texto o voz sin comando. Primero lo concreto, en local y sin tokens: la respuesta a una

@@ -310,6 +310,8 @@ class VozFalsa:
     def __init__(self, texto="", error=None):
         self.texto, self.error = texto, error
         self.hablados = []        # lo que el bot dijo en voz alta
+        self.pistas = []          # pista de ortografía recibida en cada transcripción
+        self.vocabulario = "zorro, villana"
         self.error_habla = None
 
     async def hablar(self, texto):
@@ -318,8 +320,9 @@ class VozFalsa:
         self.hablados.append(texto)
         return b"OggS-voz"
 
-    async def transcribir(self, audio, idioma="es"):
+    async def transcribir(self, audio, idioma="es", pista=None):
         assert audio == b"\x89PNG-imagen-de-prueba"  # lo que "descarga" la sesión falsa
+        self.pistas.append(pista)
         if self.error:
             raise self.error
         return self.texto

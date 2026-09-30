@@ -548,7 +548,7 @@ este camino:
 | 1 | ¿Es una orden de frase fija? ("tarea: …", "dime mis tareas", "anota en mi diario…", "cambia al proyecto X", "estado", "limpia los temporales") | `orden_hablada` en `reglas.py` | No requiere razonar: se resuelve al instante y sin tokens |
 | 2 | Si no, ChatGPT dice **qué** quieres (nota, personaje, consulta, imagen…) con un contexto corto | `router/interprete.py` | Entiende frases libres y lo que se dijo antes ("así será Aely") |
 | 3 | Si es guardar algo, el **redactor** recibe tu mensaje y el contenido real del proyecto y devuelve operaciones: agregar a un archivo o a una sección de una ficha, crear un archivo o una ficha | `acciones/redactor.py` | Decidir **dónde** va cada dato necesita leer lo que ya escribiste |
-| 4 | El código valida cada operación: solo agrega, no sale del proyecto, no toca `Imagenes/` ni `Analisis/`, y comprueba que tus palabras aparezcan en lo escrito | `redactor.validar` y `redactor.cobertura` | El modelo propone; las reglas de la bóveda las impone el código |
+| 4 | El código valida cada operación: solo agrega, no sale del proyecto, no toca `Imagenes/` ni `Analisis/`, y comprueba que tus palabras aparezcan en lo escrito (si faltan muchas, guarda también tu mensaje original, plegado) | `redactor.validar` y `redactor.cobertura` | El modelo propone; las reglas de la bóveda las impone el código |
 | 5 | Si falta algo (el nombre del personaje), pregunta; tu respuesta llega como mensaje normal y se une a la anterior | `ctx.recordar(accion="pregunta")` | Sin estados especiales: el contexto viaja en `ultima_accion` |
 | 6 | Si GPT no responde, la nota se guarda por tipo (`Ideas.md`, `Historia.md`…) | `notas.guardar` | Ninguna idea se pierde |
 

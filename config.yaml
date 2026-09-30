@@ -100,6 +100,8 @@ proveedores:
 voz:
   # Pista de ortografía para Whisper. En español latinoamericano la z y la s suenan igual
   # ("sorro" por "zorro"): las palabras de aquí se escriben bien al transcribir.
+  # Desde el 2026-09-30 cada audio lleva además, delante, el proyecto activo, sus personajes (con
+  # alias) y los demás proyectos: no hace falta agregar aquí los nombres ("Dikon" -> "Deacon").
   # Agrega nombres de personajes, lugares y términos del proyecto (máx. ~400 caracteres).
   vocabulario: "Notas en español latinoamericano sobre un webtoon: zorro, villana, protagonista, hermana, storyboard, viñeta, entintado, boceto, capítulo, escena, Zamael. Crea una imagen en estilo anime de una elfa."
 

@@ -14,6 +14,8 @@ import httpx
 
 # Lo que se lee en voz alta: sin rutas ni listas largas.
 MAX_HABLADO = 350
+# Largo de la pista de ortografía para Whisper: el servicio la corta en 400 (usa ~224 tokens previos).
+MAX_PISTA = 400
 _RUTA_ENTRE_PARENTESIS = re.compile(r"\s*\([^()]*\.md\)")
 _RUTA = re.compile(r"(?:\S+/)*(?P<archivo>[^\s/]+)\.(?:md|png|jpe?g|webp)\b")
 # "Personaje Kira creado en Kira": el nombre propio (con mayúscula) ya se dijo; sobra el archivo.
@@ -39,6 +41,30 @@ def para_hablar(texto: str) -> str:
     return t
 
 
+def componer_pista(base: str, proyecto: str | None = None, personajes: list[str] | None = None,
+                   proyectos: list[str] | None = None, maximo: int = MAX_PISTA) -> str:
+    """Pista para Whisper con los nombres reales primero (lo que más falla al transcribir:
+    "Dikon" por "Deacon") y el vocabulario de config.yaml después, sin pasar de `maximo`.
+    Whisper la toma como "texto anterior": en frases, no como lista suelta."""
+    partes = []
+    if proyecto:
+        partes.append(f"Proyecto {proyecto}.")
+    nombres = list(dict.fromkeys(n.strip() for n in personajes or [] if n.strip()))
+    if nombres:
+        partes.append("Personajes: " + ", ".join(nombres) + ".")
+    otros = [p for p in dict.fromkeys(proyectos or []) if p != proyecto]
+    if otros:
+        partes.append("Otros proyectos: " + ", ".join(otros) + ".")
+    if base.strip():
+        partes.append(base.strip())
+    pista = ""
+    for parte in partes:   # partes enteras: una frase cortada a la mitad confunde más que ayuda
+        if len(pista) + len(parte) + 1 > maximo:
+            break
+        pista = f"{pista} {parte}".strip()
+    return pista
+
+
 class ErrorVoz(Exception):
     """El servicio de voz no respondió o no pudo transcribir; el mensaje es legible."""
 
@@ -51,12 +77,14 @@ class ClienteVoz:
         self.timeout = timeout
         self._transport = transport  # para pruebas con httpx.MockTransport
 
-    async def transcribir(self, audio: bytes, idioma: str = "es") -> str:
+    async def transcribir(self, audio: bytes, idioma: str = "es", pista: str | None = None) -> str:
+        """`pista`: la de este audio (componer_pista); sin ella, el vocabulario de config.yaml."""
+        pista = (pista if pista is not None else self.vocabulario).strip()
         try:
             async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as cli:
                 params = {"idioma": idioma}
-                if self.vocabulario:
-                    params["pista"] = self.vocabulario
+                if pista:
+                    params["pista"] = pista
                 resp = await cli.post(f"{self.url}/transcribir", params=params, content=audio,
                                       headers={"Content-Type": "application/octet-stream"})
         except httpx.HTTPError as e:
