@@ -58,6 +58,9 @@ POR_DEFECTO: dict[str, Any] = {
         "temporales_boveda_horas": 1,
     },
     "latido": {"intervalo_s": 60, "vigencia_s": 180},
+    # Relevo entre servidores (estado/relevo.py). Apagado por defecto: sin él, el arranque es el de siempre.
+    "relevo": {"activo": False, "ceden": [], "revisar_s": 5, "sondeo_s": 8, "avisar": True,
+               "llevar_proyecto": True},
     "voz": {"vocabulario": ""},
 }
 

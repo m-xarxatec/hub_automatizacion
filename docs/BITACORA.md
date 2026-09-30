@@ -2298,3 +2298,87 @@ el error; con él el modelo se instala, se recarga y no quedan `.modelo.*`. `cor
 **Qué aprendiste: el mismo código, distinto sistema de archivos.** Un contenedor Linux sobre una carpeta de Windows
 hereda las reglas de NTFS: una carpeta con archivos abiertos no se renombra. Por eso las pruebas en Ubuntu no lo
 veían: el fallo no estaba en el código sino en el montaje.
+
+## 2026-09-30 — Relevo entre servidores: la PC de guardia cede el bot a la laptop y lo retoma sola
+
+Para la presentación del 2026-10-01 el usuario quiere dejar la PC de casa encendida como servidor, levantar el
+stack en la laptop delante del público y que la PC deje de atender (solo sincronizando con Syncthing) hasta que la
+laptop se apague, momento en que vuelve sola. Antes, el segundo equipo se negaba a arrancar (latido o 409) y había
+que parar la PC a mano. Se planificó primero (dos señales, estados, riesgos) y el usuario aprobó el enfoque tras
+desplegar y probar la laptop con `c46e035`.
+
+**Qué se hizo**
+- **Estados en el latido** (`estado/latido.py`): `activo`, `espera` o `apagado`, `desde`, `cede` (equipo de guardia)
+  y `proyectos` (proyecto activo de cada chat). Un latido sin `estado` (código anterior) cuenta como `activo`.
+  `conflicto()` ya no bloquea por equipos en espera, apagados o de guardia. `por_servidor()`: el último de cada equipo.
+- **Relevo** (`estado/relevo.py`, nuevo): supervisor que alterna entre leer el bot y esperar, sin reiniciar el
+  proceso.
+  - El de guardia (`relevo.ceden`) cede ante el **409** (un middleware de la sesión de aiogram lo detecta en
+    `getUpdates`) o ante un latido reciente de otro equipo `activo`.
+  - En espera solo late; vuelve cuando el otro dice `apagado` o deja de latir 3 min, **tras un sondeo** de 8 s
+    (`getUpdates` largo: si otro lee, llega un 409).
+  - Si el sondeo choca sin latido que lo explique, pausa de 3, 6, 12… hasta 30 min. Tras un `apagado`, hasta
+    3 reintentos cortos (12 s).
+  - Quien toma el bot adopta el proyecto activo del otro si es más reciente. Avisa por Telegram ("Ahora atiende
+    laptop…" / "Vuelve a atender pc-casa: laptop se apagó.").
+  - La orden de apagado de Docker (SIGTERM) deja el latido en `apagado`, incluso a mitad de un sondeo.
+- **Bot**: `preparar(comprobar_lector=False)` con relevo; `/estado` con "de guardia" y "Otros servidores: …"; el aviso
+  de conflictos de Syncthing se pausa en espera.
+- **Terminal**: `./hub.sh servidores` (tabla de latidos) y `parar`, que después de `down` espera a que el de guardia
+  retome el bot y lo confirma con ✓ (`scripts/relevo.py`); `chequeo` avisa del desfase de reloj con Telegram (encabezado
+  `Date`), del papel del equipo en el relevo y de un nombre de guardia sin latido.
+- **Documentación**: README (función, comandos, "Mover el servidor…", problemas comunes, árbol) y GUIA (sección 8
+  reescrita: estados, dos señales, sondeo, reloj propio; ejercicio 5).
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/estado/relevo.py` | Nuevo: `Relevo` (ciclo atender/esperar), `Observador`, `a_quien_ceder`, `VigiaConflicto`, `adoptar_en` |
+| `core/app/estado/latido.py` | Estados, `cede`, `proyectos`, `por_servidor`, `estado_de`; `conflicto(ceden=)` |
+| `core/app/estado/db.py` | `proyectos_activos()` para el latido |
+| `core/app/main.py` | Crea y conecta el relevo si `relevo.activo`; sin él, el arranque de siempre |
+| `core/app/entradas/telegram_bot.py` | `Contexto.relevo`, `/estado`, conflictos en pausa, `preparar(comprobar_lector=)` |
+| `core/app/config.py`, `config.yaml` | Sección `relevo` (apagada por defecto en código; activa con `ceden: [pc-casa]`) |
+| `core/scripts/relevo.py` | Nuevo: tabla de servidores y espera del relevo tras `parar` |
+| `core/scripts/chequeo.py` | Desfase de reloj, papel en el relevo, guardia sin latido |
+| `hub.sh`, `hub.ps1` | `parar` espera al de guardia; `servidores` |
+| `core/tests/test_relevo.py` | 17 pruebas: reglas, reloj, proyectos, ciclo completo con Telegram falso, terminal |
+| `README.md`, `GUIA.md` | Relevo explicado |
+| `datos/pruebas/simular_relevo.py` | Fuera de git: dos relevos reales de aiogram contra una API de Telegram falsa por HTTP |
+
+**Decisiones y por qué**
+- **El 409 como candado y el latido como tablón:** el 409 reacciona en un segundo y no depende de Syncthing (que en la
+  sala irá por relé, ~10-30 s); el latido da lo que el 409 no sabe: quién es el otro y cuándo se apagó.
+- **Solo cede el de guardia; la laptop nunca:** si la PC se reinicia en medio de la demo, arranca en espera y no le
+  quita el bot a la laptop. Entre dos de guardia atiende el de nombre menor (sin cederse el bot mutuamente).
+- **Sondeo largo antes de volver:** una petición instantánea siempre "gana" y no detecta a otro lector.
+- **Edad del latido con el reloj propio** (cuánto hace que *cambió*): Docker Desktop puede desfasar la hora de la
+  laptop tras suspenderla.
+- **Proyecto activo en el latido** (opción recomendada en el plan): el chat queda en `_hub/`, que llega también al
+  móvil y la tablet (son del usuario). Solo se adopta si es más reciente que el propio y el proyecto existe.
+- **Sin relevo = lo de antes:** `relevo.activo: false` recupera el arranque anterior sin tocar código.
+
+**Problemas encontrados**
+- Simulando la regla inversa de Telegram (gana la lectura vieja), la lectura pendiente de la laptop seguía viva unos
+  segundos tras apagarse: el primer sondeo de la PC chocaba y caía en la pausa de 3 min. Se agregaron reintentos
+  cortos tras un `apagado` recién visto. La PC retoma el bot en 14 s en ese caso y en 2,5 s en el normal.
+- Un error 5xx de Telegram durante el sondeo tumbaba `core`: ahora cuenta como "sin red" y se reintenta en 30 s.
+- La orden de apagado a mitad de un sondeo de 8 s podía no dejar escribir `apagado` antes del SIGKILL (Docker da
+  10 s): el sondeo se corta en cuanto llega la orden.
+
+**Resultado de las pruebas:** 360 pasan (1 omitida) en `.venv` y en la imagen reconstruida. Simulación con aiogram
+real contra la API falsa: la PC cede en 0,1 s (409) y retoma en 2,5 s; con la regla inversa, cede por el latido en
+0,5 s y retoma en 14 s. En los dos casos cada mensaje lo procesó una sola vez el servidor correcto. Falta la prueba con
+el token real y Syncthing entre los dos equipos (ensayo).
+
+**Cómo probarlo:** en la PC, recrear `core` con el código nuevo (usa el token real). En la laptop, `git pull`,
+`docker compose build core` y `.\hub.ps1 arrancar`. Seguir `./hub.sh logs` en la PC: "Relevo: … pasa a espera".
+Mandar mensajes, `/estado` (ver "Otros servidores"), `.\hub.ps1 parar` y esperar el ✓. Repetir con la laptop en el
+hotspot del móvil (relé de Syncthing) y una vez apagando la laptop de golpe (la PC vuelve a los ~3 min).
+`.venv/bin/python datos/pruebas/simular_relevo.py [nueva|vieja]` repite la simulación sin token.
+
+**Qué aprendiste: un candado y un tablón no son lo mismo.** El 409 de Telegram es un candado: garantiza que solo uno
+lea el bot y avisa al instante, pero no dice quién es el otro ni cuándo se va. El latido es un tablón: cuenta el
+estado de cada equipo, pero llega tarde y puede mentir (relojes, Syncthing caído). Juntos se cubren: se actúa con
+el candado y se decide con el tablón, y antes de retomar el candado se comprueba de verdad (el sondeo).

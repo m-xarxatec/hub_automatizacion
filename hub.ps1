@@ -9,7 +9,12 @@ $gpu = @("-f", "docker-compose.yml", "-f", "docker-compose.gpu.yml")
 switch ($accion) {
     "arrancar"     { docker compose @gpu up -d --build }
     "arrancar-cpu" { docker compose up -d --build }
-    "parar"        { docker compose down }
+    "parar"        {
+        docker compose down
+        # Relevo: si hay un equipo de guardia, espera a que retome el bot (Syncthing le lleva el aviso).
+        docker compose run --rm --no-deps core python -m scripts.relevo esperar
+    }
+    "servidores"   { docker compose run --rm --no-deps core python -m scripts.relevo }
     "reiniciar"    { docker compose restart core }
     "logs"         { docker compose logs -f --tail=100 core }
     "estado"       { docker compose ps }
@@ -25,7 +30,8 @@ switch ($accion) {
 Uso: .\hub.ps1 <accion>
   arrancar      levanta todo con GPU (reconstruye si cambió el código)
   arrancar-cpu  levanta todo sin GPU
-  parar         detiene todo (hacerlo antes de mover el servidor a otro equipo)
+  parar         detiene todo; con relevo, espera a que el equipo de guardia retome el bot
+  servidores    quién atiende el bot, quién espera y quién está apagado (latidos en _hub/)
   reiniciar     reinicia core (tras editar config.yaml o .env)
   logs          sigue los registros de core
   estado        contenedores en marcha

@@ -99,6 +99,11 @@ class Estado:
         self.cx.execute("UPDATE chat SET proyecto = ? WHERE chat_id = ?", (proyecto, chat_id))
         self.cx.commit()
 
+    def proyectos_activos(self) -> dict[int, str]:
+        """chat -> proyecto activo (viaja en el latido para que quien tome el bot siga en él)."""
+        filas = self.cx.execute("SELECT chat_id, proyecto FROM chat WHERE proyecto IS NOT NULL").fetchall()
+        return {int(chat): str(proyecto) for chat, proyecto in filas}
+
     # --- sesión de conversación (clave para OpenClaw) ----------------------------
     def sesion(self, chat_id: int) -> str:
         self._chat(chat_id)

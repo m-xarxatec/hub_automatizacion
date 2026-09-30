@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import httpx
@@ -18,6 +19,16 @@ from app.ajustes import Ajustes
 from app.estado import latido
 
 OK, AVISO, FALLO = "[ OK ]", "[AVISO]", "[FALLO]"
+DESFASE_MAX_S = 30
+
+
+def desfase_reloj(fecha_http: str | None, ahora: float) -> float | None:
+    """Segundos que este reloj va adelantado (+) o atrasado (-) respecto del encabezado Date de una
+    respuesta HTTP; None si no se puede leer."""
+    try:
+        return ahora - parsedate_to_datetime(fecha_http or "").timestamp()
+    except (TypeError, ValueError):
+        return None
 
 
 def main() -> int:
@@ -50,6 +61,11 @@ def main() -> int:
             datos = r.json()
             if datos.get("ok"):
                 linea(OK, f"Token de Telegram válido: @{datos['result']['username']}")
+            desfase = desfase_reloj(r.headers.get("date"), time.time())
+            if desfase is not None and abs(desfase) > DESFASE_MAX_S:
+                linea(AVISO, f"El reloj de este equipo va {int(abs(desfase))} s "
+                             f"{'adelantado' if desfase > 0 else 'atrasado'} respecto de Telegram: sincroniza la "
+                             "hora (en Windows, tras suspender la laptop, reiniciar Docker Desktop la corrige)")
             else:
                 linea(FALLO, f"Telegram rechazó el token: {datos.get('description')}")
         except httpx.HTTPError as e:
@@ -83,7 +99,21 @@ def main() -> int:
         if vivo:
             edad = int(time.time() - float(vivo.get("epoch", 0)))
             estado = OK if vivo.get("servidor") == a.servidor_nombre or edad > 180 else AVISO
-            linea(estado, f"Último latido: '{vivo.get('servidor')}' hace {edad} s")
+            linea(estado, f"Último latido: '{vivo.get('servidor')}' hace {edad} s ({latido.estado_de(vivo)})")
+        relevo = cfg.get("relevo") or {}
+        guardias = [str(n) for n in relevo.get("ceden") or []]
+        if not relevo.get("activo"):
+            print("[ -- ] Relevo apagado (relevo.activo: false)")
+        elif a.servidor_nombre in guardias:
+            linea(OK, "Relevo: este equipo es de guardia (cede el bot si otro lo toma y lo retoma solo)")
+        elif guardias:
+            linea(OK, f"Relevo: {', '.join(guardias)} de guardia; este equipo le toma el bot al arrancar")
+        else:
+            linea(AVISO, "Relevo activo sin equipos de guardia (relevo.ceden vacío en config.yaml)")
+        conocidos = latido.por_servidor(b / cfg["boveda"]["interna"])
+        faltan = [g for g in guardias if g != a.servidor_nombre and g not in conocidos]
+        if relevo.get("activo") and faltan:
+            linea(AVISO, f"Ningún latido de {', '.join(faltan)}: ¿su SERVIDOR_NOMBRE coincide con relevo.ceden?")
 
     # --- Ollama ------------------------------------------------------------------
     cfg_llm = cfg.get("proveedores", {}).get("llm_local", {})

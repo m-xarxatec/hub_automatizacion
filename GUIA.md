@@ -20,7 +20,7 @@ Formato de cada paso:
 5. [El repositorio y los secretos](#5-el-repositorio-y-los-secretos)
 6. [Primer arranque](#6-primer-arranque)
 7. [Qué pasa por dentro cuando envías un mensaje](#7-qué-pasa-por-dentro-cuando-envías-un-mensaje)
-8. [Mover el servidor a la laptop](#8-mover-el-servidor-a-la-laptop)
+8. [Mover el servidor a la laptop (relevo)](#8-mover-el-servidor-a-la-laptop-relevo)
 9. [Pruebas y registros](#9-pruebas-y-registros)
 10. [Ejercicios para afianzar](#10-ejercicios-para-afianzar)
 
@@ -105,7 +105,8 @@ del móvil.
 
 La consecuencia: **solo un proceso puede preguntar a la vez por el mismo bot**. Si dos
 lo hacen, Telegram responde con el error **409 Conflict**. Por eso nunca pueden estar
-activos la PC y la laptop al mismo tiempo.
+activos la PC y la laptop al mismo tiempo. El relevo (sección 8) usa justamente ese 409
+como aviso para que la PC le deje el bot a la laptop.
 
 ### Variables de entorno y el archivo `.env`
 
@@ -598,28 +599,52 @@ los lee todos: si otro equipo escribió hace menos de 3 minutos, se detiene. Es 
 candado, además del error 409 de Telegram, para no tener dos servidores activos. Cada equipo
 tiene su propio archivo porque, con uno compartido, si un equipo escribía sin conexión
 Syncthing creaba copias de conflicto (antes del 2026-09-30 era `_hub/servidor.json`).
+Desde el relevo, el latido dice también el **estado** del equipo (`activo`, `espera` o
+`apagado`), si es de guardia y el proyecto activo de cada chat.
 
 ---
 
-## 8. Mover el servidor a la laptop
+## 8. Mover el servidor a la laptop (relevo)
 
-```bash
-./hub.sh parar            # en la PC
-```
-
-Espera a que Syncthing marque la carpeta como *Actualizada* en la laptop.
+La PC de casa queda encendida como servidor **de guardia** (`relevo.ceden: [pc-casa]` en
+`config.yaml`). Para mover el bot a la laptop no hace falta tocar la PC:
 
 ```powershell
-.\hub.ps1 arrancar        # en la laptop
+.\hub.ps1 arrancar        # en la laptop, con la bóveda ya "Actualizada" en Syncthing
+.\hub.ps1 servidores      # quién atiende y quién espera
+.\hub.ps1 parar           # al terminar: la PC retoma el bot; espera el ✓ antes de apagar
 ```
 
-> **Por qué este orden:** si arrancas la laptop antes de parar la PC, las dos pedirían
-> mensajes a Telegram a la vez (409). La laptop lo detecta y se detiene; Docker la
-> reintenta sola con esperas cada vez más largas, y en cuanto pares la PC, arranca.
-> **Por qué esperar a Syncthing:** así la laptop empieza con la bóveda al día y con el
-> latido de la PC ya viejo.
-> **Si la PC se apagó de golpe:** su último latido tardará 3 minutos en caducar. O esperas,
-> o pones `FORZAR_ARRANQUE=1` en el `.env` de la laptop **una sola vez** y lo vuelves a 0.
+Cada `core` está en uno de tres estados, que escribe en su latido:
+
+| Estado | Qué hace |
+| --- | --- |
+| `activo` | Lee el bot de Telegram y responde |
+| `espera` | Proceso vivo, sin leer Telegram ni avisar conflictos; solo late y mira los latidos |
+| `apagado` | Se detuvo con `parar` (lo escribe al recibir la orden de Docker) |
+
+El relevo usa **dos señales**:
+
+- **El 409 de Telegram es el candado real.** Cuando la laptop empieza a leer el bot, la
+  lectura pendiente de la PC recibe el 409 y la PC pasa a espera en uno o dos segundos. No
+  depende de Syncthing.
+- **El latido es el tablón de avisos** (llega por Syncthing en ~10-30 s). Con él la laptop
+  sabe que puede arrancar aunque la PC esté activa (es de guardia), y la PC sabe cuándo la
+  laptop se apagó.
+
+Para volver, la PC no se fía solo del latido: antes de leer el bot escucha a Telegram unos
+segundos (**sondeo**). Si otro equipo sigue leyendo, las dos lecturas chocan y llega un 409;
+entonces sigue en espera y reintenta cada vez más espaciado. Una petición instantánea no
+serviría: la petición más nueva siempre gana, así que nunca vería al otro.
+
+> **Por qué la PC mide la edad de los latidos con su propio reloj:** la laptop puede tener la
+> hora desfasada (pasa con Docker Desktop tras suspenderla). La PC no compara la hora que
+> escribió la laptop con la suya, sino cuánto hace que *vio cambiar* ese latido.
+> **Si la laptop se apaga de golpe** (sin `parar`), no deja su latido en `apagado`: la PC
+> retoma el bot cuando ese latido cumple 3 minutos sin cambiar.
+> **Sin relevo** (`relevo.activo: false`): primero `./hub.sh parar` en la PC, esperar a
+> Syncthing y arrancar la laptop. Si la PC se apagó de golpe, su latido tarda 3 minutos en
+> caducar; o `FORZAR_ARRANQUE=1` en el `.env` de la laptop **una sola vez**.
 
 ---
 
@@ -678,9 +703,9 @@ prueba para cada uno en `core/tests/`.
 4. **Tipo de nota nuevo.** Agrega `lugar` (para escenarios del cómic) con su carpeta
    `Historia/Lugares`. Archivos: `config.yaml` y `reglas.py`. Aprendes: cómo la
    configuración y el código trabajan juntos.
-5. **Provocar el 409 a propósito.** Con el stack activo en la PC, arranca también la
-   laptop y lee los registros de la laptop. Aprendes: por qué existen el latido y la
-   comprobación de arranque, viéndolos actuar.
+5. **Ver el relevo.** Con el stack activo en la PC, arranca también la laptop y sigue las
+   líneas `Relevo:` de `./hub.sh logs` en los dos equipos; luego `parar` en la laptop.
+   Aprendes: cómo el 409 y el latido reparten el bot entre dos servidores, viéndolos actuar.
 
 ---
 

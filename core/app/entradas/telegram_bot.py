@@ -43,6 +43,7 @@ from ..boveda import conflictos, escritor
 from ..boveda.proyectos import Boveda
 from ..estado import limpieza
 from ..estado.db import Estado
+from ..estado.relevo import Relevo
 from ..proveedores.cadena import SinProveedores
 from ..router.clasificador import ModeloRechazado
 from ..proveedores.openclaw import OpenClaw
@@ -149,6 +150,7 @@ class Contexto:
     interprete: Interprete | None = None
     redactor: redaccion.Redactor | None = None
     vigilante: conflictos.Vigilante | None = None   # conflictos de Syncthing ya vistos y avisados
+    relevo: Relevo | None = None   # relevo entre servidores (relevo.activo en config.yaml)
     inicio: float = field(default_factory=time.time)
     pendientes: dict[str, dict[str, Any]] = field(default_factory=dict)
     # chat -> clave del pendiente de un personaje al que le falta el nombre
@@ -518,12 +520,15 @@ def crear_router(ctx: Contexto) -> Router:
                   else _constante("apagado en el MVP (llm_local.activo: false)"))
         ollama, openclaw, voz = await asyncio.gather(
             ollama, _estado_openclaw(a.openclaw_url, a.openclaw_token), voz)
-        minutos = int((time.time() - ctx.inicio) / 60)
+        minutos = int((time.time() - (ctx.relevo.desde if ctx.relevo else ctx.inicio)) / 60)
+        otros = ctx.relevo.resumen_otros() if ctx.relevo else None   # "pc-casa en espera, de guardia (…)"
         imagenes, problemas_img = estado_imagenes()
         respaldo = "reglas + SetFit" if getattr(ctx.router, "clasificador", None) else "reglas (SetFit sin entrenar)"
         consulta = " → ".join(_modelo(n) for n in ctx.openclaw.cadena) if ctx.openclaw else "sin OpenClaw"
         lineas = [
-            f"Servidor: {a.servidor_nombre} (activo hace {minutos} min)",
+            f"Servidor: {a.servidor_nombre}{', de guardia' if ctx.relevo and ctx.relevo.guardia else ''} "
+            f"(activo hace {minutos} min)",
+            *([otros] if otros else []),
             f"Proyecto activo: {destino(m.chat.id)} ({_cuantos(len(ctx.boveda.listar_proyectos()), 'proyecto')} "
             "en total)",
             "",
@@ -1632,7 +1637,8 @@ async def vigilar_conflictos(bot: Bot, ctx: Contexto, intervalo_s: int) -> None:
     """Revisa la bóveda cada `intervalo_s` segundos (boveda.revisar_conflictos_s en config.yaml)."""
     while True:
         try:
-            await revisar_conflictos(bot, ctx)
+            if ctx.relevo is None or ctx.relevo.atendiendo:   # en espera avisa el equipo que atiende
+                await revisar_conflictos(bot, ctx)
         except Exception:  # noqa: BLE001 - una revisión fallida no debe parar la vigilancia
             log.exception("Falló la revisión de conflictos de Syncthing")
         await asyncio.sleep(intervalo_s)
@@ -1689,14 +1695,16 @@ def crear_bot(ctx: Contexto) -> tuple[Bot, Dispatcher]:
     return bot, dp
 
 
-async def preparar(bot: Bot) -> str | None:
+async def preparar(bot: Bot, comprobar_lector: bool = True) -> str | None:
     """Comprueba que nadie más lee este bot y publica el menú de comandos.
 
-    Devuelve un mensaje de error si hay otro proceso leyendo (error 409).
+    Devuelve un mensaje de error si hay otro proceso leyendo (error 409). Con relevo
+    (`comprobar_lector=False`) esa comprobación la hace el relevo.
     """
     try:
         await bot.delete_webhook(drop_pending_updates=False)
-        await bot.get_updates(limit=1, timeout=0)
+        if comprobar_lector:
+            await bot.get_updates(limit=1, timeout=0)
     except TelegramConflictError:
         return ("Otro proceso está leyendo este bot de Telegram (error 409). "
                 "Detén el stack en el otro equipo y desactiva el canal de Telegram de "
