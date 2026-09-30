@@ -135,7 +135,7 @@ def test_el_bot_avisa_sugiere_y_une_con_un_boton(tmp_path, cfg, boveda):
 def test_conflictos_por_comando_voz_y_despues(tmp_path, cfg, boveda):
     ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
     _run(dp, bot, _msg("/conflictos"))
-    assert _textos(sesion)[-1] == "No hay conflictos de Syncthing en la bóveda."
+    assert _textos(sesion)[-1] == "<b>✅ Tu bóveda está en orden</b>\n\nNo hay conflictos de Syncthing en la bóveda."
     c = _conflicto(boveda.carpeta_proyectos / "W", "Ideas.md", "uno\ndos\n", "uno\n")
     _run(dp, bot, _msg("hay conflictos?"))                               # orden fija, sin tokens
     aviso = sesion.enviados[-1]

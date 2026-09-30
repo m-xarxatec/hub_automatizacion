@@ -277,8 +277,8 @@ def test_nota_libre_la_reparte_el_redactor(tmp_path, cfg, boveda):
     _ficha(carpeta, "Aely", "Una kitsune hermosa.")
     _run(dp, bot, _msg(KAEL))
     respuesta = _textos(sesion)[-1]
-    assert respuesta.startswith("Creé la ficha de Kael")
-    assert "- Proyectos/Webtoon/Personajes/Kael.md" in respuesta and "⚠ Antes Aely era una kitsune" in respuesta
+    assert respuesta.startswith("<b>✅ Tu idea ya tiene su lugar</b>\n\nCreé la ficha de Kael")
+    assert "• Proyectos/Webtoon/Personajes/Kael.md" in respuesta and "⚠ Antes Aely era una kitsune" in respuesta
     assert (carpeta / "Personajes" / "Kael.md").exists() and (carpeta / "Historia.md").exists()
     assert "## Historia\n\nKael le perdona la vida" in (carpeta / "Personajes" / "Aely.md").read_text(encoding="utf-8")
     assert not (carpeta / "Ideas.md").exists()                              # nada de archivos por tipo
@@ -336,7 +336,7 @@ def test_nota_con_prefijo_va_directo_al_redactor_sin_interprete(tmp_path, cfg, b
     enviado = json.loads(cuerpos[0]["mensajes"][-1]["texto"])
     assert enviado["mensaje"] == "la villana usa una máscara de zorro"
     assert enviado["pista_del_interprete"] == {"accion": "nota", "tipo": "idea"}
-    assert _textos(sesion)[-1].startswith("Anotado en Ideas.")
+    assert _textos(sesion)[-1].startswith("<b>✅ Tu idea ya tiene su lugar</b>\n\nAnotado en Ideas.")
 
 
 def test_proyecto_nuevo_con_descripcion_la_guarda_el_redactor(tmp_path, cfg, boveda):
@@ -362,7 +362,8 @@ def test_ordenes_concretas_por_texto_no_gastan_tokens(tmp_path, cfg, boveda):
     textos = _textos(sesion)
     assert "Tarea agregada a Proyectos/Webtoon/tareas.md" in textos[1]
     assert "1. comprar tinta" in textos[2]
-    assert textos[3].startswith("Anotado en el diario de hoy") and textos[4].startswith("Anotado en el diario")
+    assert textos[3].startswith("<b>✅ Guardado en tu bóveda</b>\n\nAnotado en el diario de hoy")
+    assert textos[4].startswith("<b>✅ Guardado en tu bóveda</b>\n\nAnotado en el diario")
     diario = next((boveda.raiz / "Diario").glob("*.md")).read_text(encoding="utf-8")
     assert " hoy entinté tres páginas\n" in diario and " terminé el boceto\n" in diario
     assert ctx.interprete.contextos == [] and cuerpos == []
@@ -419,7 +420,7 @@ def test_anota_esto_tras_una_consulta_y_un_proyecto_nuevo(tmp_path, cfg, boveda)
     assert ultima["anteriores"][0] == {"accion": "consulta", "pregunta": "dame ideas de un viajero del tiempo "
                                        "lovecraftiano", "respuesta": idea}
     assert idea in (boveda.carpeta_proyectos / "webtoon" / "_proyecto.md").read_text(encoding="utf-8")
-    assert _textos(sesion)[-1].startswith("Guardé la idea en el proyecto.")
+    assert _textos(sesion)[-1].startswith("<b>✅ Tu idea ya tiene su lugar</b>\n\nGuardé la idea en el proyecto.")
 
 
 def test_recuerda_solo_las_ultimas_acciones_vigentes(tmp_path, cfg, boveda):

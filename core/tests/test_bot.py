@@ -101,6 +101,27 @@ def test_flujo_proyecto_nota_tarea(tmp_path, cfg, boveda):
     assert "1. terminar el storyboard" in textos[3]
 
 
+def test_bienvenida_html_y_acceso_a_tareas_sin_modelos(tmp_path, cfg, boveda):
+    ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
+    _run(dp, bot, _msg("/start"))
+    inicio = next(m for m in sesion.enviados if isinstance(m, SendMessage))
+    assert inicio.parse_mode == "HTML"
+    assert "<b>✨ Hub creativo" in inicio.text
+    boton = inicio.reply_markup.inline_keyboard[0][1]
+    assert boton.callback_data == "inicio:tareas"
+    _run(dp, bot, _boton(boton.callback_data))
+    assert "<b>✨ Todo al día</b>" in _textos(sesion)[-1]
+
+
+def test_nombres_de_proyectos_escapados_en_telegram(tmp_path, cfg, boveda):
+    ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
+    _run(dp, bot, _msg("/proyecto nuevo Kael & Aely"))
+    respuesta = next(m for m in sesion.enviados if isinstance(m, SendMessage))
+    assert respuesta.parse_mode == "HTML"
+    assert "Kael &amp; Aely" in respuesta.text
+    assert ctx.estado.proyecto_activo(USUARIO) == "Kael & Aely"
+
+
 def test_texto_dudoso_pide_confirmacion_y_boton_guarda(tmp_path, cfg, boveda):
     ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
     _run(dp, bot, _msg("la villana usa una máscara de zorro"))
@@ -270,7 +291,7 @@ def test_diagnostico_lista_proveedores(tmp_path, cfg, boveda):
     ctx, dp, bot, sesion = _montar(tmp_path, cfg, boveda)
     _con_imagenes(ctx, boveda, error="HTTP 401")
     _run(dp, bot, _msg("/diagnostico"))
-    assert "- cloudflare: token rechazado (HTTP 401)" in _textos(sesion)[-1]
+    assert "• cloudflare: token rechazado (HTTP 401)" in _textos(sesion)[-1]
 
 
 def test_texto_libre_de_imagen_genera_directo(tmp_path, cfg, boveda):
@@ -674,7 +695,7 @@ def test_analisis_fallido_ofrece_reintentar_u_otro_modelo(tmp_path, cfg, boveda)
     _run(dp, bot, _boton(_boton_con(sesion, "an:0:")))
     _run(dp, bot, _boton(_boton_con(sesion, "ef:low:")))
     aviso = _con_botones(sesion)
-    assert "Opus 5.5 no pudo hacer el análisis (HTTP 502 Plugin LLM completion failed. <- claude salió" in aviso.text
+    assert "Opus 5.5 no pudo hacer el análisis (HTTP 502 Plugin LLM completion failed. &lt;- claude salió" in aviso.text
     assert "No cambio de modelo sin tu confirmación" in aviso.text
     assert len(cuerpos) == 1                                        # no probó otro por su cuenta
     textos = [b.text for b in _botones(aviso)]

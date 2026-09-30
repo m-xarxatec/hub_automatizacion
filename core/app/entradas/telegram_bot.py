@@ -52,6 +52,7 @@ from ..router.interprete import Interpretacion, Interprete
 from ..router.reglas import (Decision, archivo_aparte, limpiar_tarea, nombre_respondido, orden_hablada,
                              pedido_personaje, renombrar_imagen, tipo_nota)
 from ..voz.cliente import ClienteVoz, ErrorVoz, componer_pista, para_hablar
+from .presentacion import formato, fragmentos
 
 log = logging.getLogger(__name__)
 
@@ -265,7 +266,7 @@ def crear_router(ctx: Contexto) -> Router:
     llega = {a: dia for a, dia in LLEGA.items() if not (a in ("consulta", "analisis") and ctx.openclaw)}
 
     async def decir(bot: Bot, chat: int, texto: str, reply_markup: InlineKeyboardMarkup | None = None,
-                    voz: str | None = None) -> None:
+                    voz: str | None = None, encabezado: str = "") -> None:
         """Responde con texto, o con voz si el usuario habló (sin rutas y breve: `voz` o para_hablar)."""
         if _hablado.get() and ctx.voz is not None:
             try:
@@ -276,7 +277,11 @@ def crear_router(ctx: Contexto) -> Router:
                 return
             except ErrorVoz as e:
                 log.warning("No se pudo responder con voz, va en texto: %s", e)
-        await bot.send_message(chat, texto, reply_markup=reply_markup)
+        partes = fragmentos(texto)
+        for i, parte in enumerate(partes):
+            await bot.send_message(chat, formato(parte, encabezado if i == 0 else ""),
+                                   parse_mode="HTML",
+                                   reply_markup=reply_markup if i == len(partes) - 1 else None)
 
     def destino(chat_id: int) -> str:
         return ctx.estado.proyecto_activo(chat_id) or "00-Bandeja"
@@ -379,7 +384,7 @@ def crear_router(ctx: Contexto) -> Router:
         hablado = redaccion.resumen_hablado(plan)
         if plan.pregunta:
             mensaje, hablado = f"{mensaje}\n{plan.pregunta}", f"{hablado} {plan.pregunta}"
-        await decir(bot, chat, mensaje, voz=hablado)
+        await decir(bot, chat, mensaje, voz=hablado, encabezado="✅ Tu idea ya tiene su lugar")
 
     async def guardar_referencia(bot: Bot, chat_id: int, file_id: str, ext: str, pie: str) -> str:
         proyecto = ctx.estado.proyecto_activo(chat_id)
@@ -468,9 +473,36 @@ def crear_router(ctx: Contexto) -> Router:
 
     # --- comandos -----------------------------------------------------------
     @r.message(CommandStart())
+    async def bienvenida(m: Message) -> None:
+        await decir(m.bot, m.chat.id,
+                    "Tu idea empieza aquí. Yo la llevo a tu bóveda.\n\n"
+                    "📝 **Captura** notas, ideas y tareas.\n"
+                    "🎙 **Habla** y recibe una respuesta con voz.\n"
+                    "📂 **Organiza** cada idea dentro de su proyecto.\n"
+                    "💬 **Consulta** lo que ya has escrito.\n\n"
+                    f"Proyecto activo: {destino(m.chat.id)}\n\n"
+                    "Prueba: «tarea: preparar la presentación»\n"
+                    "Escribe /ayuda para ver todos los comandos.",
+                    encabezado="✨ Hub creativo · Dale espacio a tus ideas",
+                    reply_markup=teclado([[("📂 Mis proyectos", "inicio:proyectos"),
+                                           ("📋 Mis tareas", "inicio:tareas")],
+                                          [("📊 Mis tokens", "inicio:tokens")]]))
+
+    @r.callback_query(F.data.startswith("inicio:"))
+    async def acceso_inicio(c: CallbackQuery) -> None:
+        await c.answer()
+        if isinstance(c.message, Message):
+            accion = c.data.split(":", 1)[1]
+            if accion == "proyectos":
+                await proyecto(c.message, "")
+            elif accion == "tareas":
+                await tareas(c.message)
+            elif accion == "tokens":
+                await tokens(c.message)
+
     @r.message(Command("ayuda", "help"))
     async def ayuda(m: Message) -> None:
-        await decir(m.bot, m.chat.id, AYUDA)
+        await decir(m.bot, m.chat.id, AYUDA, encabezado="🧭 Tu guía del Hub creativo")
 
     @r.message(Command("estado"))
     async def estado_cmd(m: Message) -> None:
@@ -494,14 +526,17 @@ def crear_router(ctx: Contexto) -> Router:
             f"Servidor: {a.servidor_nombre} (activo hace {minutos} min)",
             f"Proyecto activo: {destino(m.chat.id)} ({_cuantos(len(ctx.boveda.listar_proyectos()), 'proyecto')} "
             "en total)",
+            "",
             f"Intérprete: {_modelo(ctx.interprete.cliente.cadena[0]) if ctx.interprete else 'apagado'}; "
             f"respaldo local: {respaldo}",
             f"Redactor: {_modelo(ctx.redactor.nivel) if ctx.redactor else 'apagado: notas por tipo'}",
             f"Consulta: {consulta}",
+            "",
             f"OpenClaw: {openclaw}",
             f"Voz: {voz}",
             f"Imágenes: {imagenes}",
             f"Ollama: {ollama}",
+            "",
             uso.linea_estado(ctx.estado, ctx.boveda.ahora().date()),
         ]
         problemas = ([f"OpenClaw {openclaw}"] if openclaw != "responde" and ctx.openclaw else []) \
@@ -768,7 +803,8 @@ def crear_router(ctx: Contexto) -> Router:
         if _hablado.get():
             await bot.send_chat_action(chat, "upload_photo")
         else:
-            await bot.send_message(chat, "Generando la imagen… puede tardar hasta un minuto.")
+            await decir(bot, chat, "Generando la imagen… puede tardar hasta un minuto.",
+                        encabezado="🎨 Tu idea está tomando forma")
         try:
             r_img = await ctx.imagenes.crear(idea, proyecto, prompt=prompt, nombre=nombre)
         except SinProveedores as e:
@@ -885,7 +921,7 @@ def crear_router(ctx: Contexto) -> Router:
             await c.message.edit_reply_markup(reply_markup=None)
             await decir(c.bot, c.message.chat.id, texto, reply_markup=markup, voz=voz)
         elif isinstance(c.message, Message):
-            await c.message.edit_text(texto, reply_markup=markup)
+            await c.message.edit_text(formato(texto), parse_mode="HTML", reply_markup=markup)
         await c.answer()
 
     async def pedir_analisis(bot: Bot, chat: int, pedido: str) -> None:
@@ -1337,7 +1373,7 @@ def crear_router(ctx: Contexto) -> Router:
             await decir(c.bot, c.message.chat.id, texto)
             return
         if isinstance(c.message, Message):
-            await c.message.edit_text(texto)
+            await c.message.edit_text(formato(texto), parse_mode="HTML")
         else:
             await c.answer(texto, show_alert=True)
             return
