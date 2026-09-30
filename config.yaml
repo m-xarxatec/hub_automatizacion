@@ -7,16 +7,12 @@ boveda:
   diario: Diario
   proyectos: Proyectos
   interna: _hub
-  # Subcarpetas que se crean en cada proyecto nuevo
-  subcarpetas:
-    - Ideas
-    - Historia
-    - Historia/Personajes
-    - Produccion
-    - Imagenes
-    - Referencias
-    - Analisis
-  # Tipo de nota -> subcarpeta del proyecto
+  # Un proyecto nuevo es solo su carpeta y _proyecto.md (decidido el 2026-09-30): las carpetas y
+  # archivos aparecen cuando hay algo que guardar. Dónde va cada nota lo decide el redactor
+  # (proveedores.redactor); el esquema por tipo de abajo queda de respaldo si GPT no responde.
+  # Fichas nuevas de personaje (si el proyecto ya tiene Historia/Personajes, se usa esa):
+  personajes: Personajes
+  # Respaldo sin GPT: tipo de nota -> archivo del proyecto (Ideas.md, Historia.md…)
   destino_por_tipo:
     idea: Ideas
     general: Ideas
@@ -36,6 +32,22 @@ router:
   # el LLM local (Ollama) si proveedores.llm_local.activo.
   segunda_opinion: true
   llm_timeout_s: 15
+  # Intérprete (decidido el 2026-09-29): ChatGPT entiende cada mensaje libre (acción, destino, contenido
+  # sin la orden, personaje, prompt de imagen) con un contexto corto (~400-600 tokens por mensaje).
+  # Comandos y órdenes habladas de prefijo fijo siguen en local; si GPT no responde, decide el router
+  # local (reglas + SetFit). activo: false vuelve al esquema anterior (GPT solo si SetFit duda).
+  # modelo/razonamiento: debe estar en allowedCompletionModels (openclaw/fragmento-config.json5).
+  interprete: {activo: true, modelo: openai/gpt-6-sol, razonamiento: low, timeout_s: 30, max_tokens: 500}
+  # Cómo se entrena el clasificador (/reentrenar y ./hub.sh entrenar). Elegido el 2026-09-29 midiendo
+  # con frases que nunca se entrenan (docs/BITACORA.md): mpnet acierta más que MiniLM (94 % contra
+  # 91 % en la prueba ciega). "congelar_vocabulario" deja fija la tabla de palabras: con pocos
+  # ejemplos no aporta y así cabe en 4 GB. Cambiar la base exige ./hub.sh modelos y reentrenar.
+  # Un modelo nuevo que salga peor que el actual en las pruebas se descarta solo.
+  entrenamiento:
+    base: sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+    iteraciones: 10
+    epocas: 1
+    congelar_vocabulario: true
 
 proveedores:
   # Consulta y dudas del router, por OpenClaw (plugin hub-puente), en orden y con el menor
@@ -46,6 +58,16 @@ proveedores:
   consulta:
     - {modelo: openai/gpt-6-luna, razonamiento: low}
     - {modelo: claude-cli/claude-haiku-4-5, razonamiento: "off", aislado: true}
+  # Redactor (decidido el 2026-09-30): con tu mensaje y el contenido real del proyecto decide qué
+  # escribir y dónde (archivo existente, sección de una ficha, archivo o ficha nueva, varios a la vez)
+  # o te pregunta si falta algo. Solo agrega; nunca borra ni sale del proyecto. Si no responde, la nota
+  # se guarda por tipo como antes. Medido el 2026-09-30 con 9 mensajes reales: "low" organiza igual de
+  # bien que "medium" y tarda 2-7 s (medium, 3-13 s). Si notas errores de criterio, prueba "medium".
+  # tope_contexto_tokens: cuánto del proyecto lee (lo más relacionado primero).
+  redactor: {activo: true, modelo: openai/gpt-6-sol, razonamiento: low, timeout_s: 90, max_tokens: 3000,
+             tope_contexto_tokens: 12000}
+  # La consulta lee las notas del proyecto activo hasta este tope (0 = sin notas).
+  consulta_notas_tokens: 6000
   llm_local:
     # Apagado en el MVP: el router usa SetFit + reglas y las imágenes usan la idea tal cual.
     # Vuelve (true) con las medidas ante fallos: segunda opinión, prompts y último respaldo.
@@ -78,6 +100,8 @@ proveedores:
 voz:
   # Pista de ortografía para Whisper. En español latinoamericano la z y la s suenan igual
   # ("sorro" por "zorro"): las palabras de aquí se escriben bien al transcribir.
+  # Desde el 2026-09-30 cada audio lleva además, delante, el proyecto activo, sus personajes (con
+  # alias) y los demás proyectos: no hace falta agregar aquí los nombres ("Dikon" -> "Deacon").
   # Agrega nombres de personajes, lugares y términos del proyecto (máx. ~400 caracteres).
   vocabulario: "Notas en español latinoamericano sobre un webtoon: zorro, villana, protagonista, hermana, storyboard, viñeta, entintado, boceto, capítulo, escena, Zamael. Crea una imagen en estilo anime de una elfa."
 

@@ -1,0 +1,136 @@
+# Segunda prueba del router, CIEGA: escrita después de ajustar con prueba.yaml y sin mirar sus
+# resultados al redactarla. Sirve para comparar configuraciones sin "enseñar el examen".
+# Nunca se usa para entrenar ni para elegir ejemplos. Frases más variadas y difíciles: sin verbo
+# claro, con dos intenciones, muy largas o muy cortas, y con errores de transcripción.
+
+nota:
+  - ah y otra cosa el hermano de la reina es ciego pero ve fantasmas
+  - lo de la biblioteca prohibida que sea en el sótano del castillo
+  - Para que no se me olvide, la villana nació el mismo día que la protagonista
+  - El sonido de las campanas anuncia que alguien murió
+  - Se me ocurre que la guerra podría durar solo un día
+  - los niños del orfanato tienen poderes pero no lo saben todavía
+  - Detalle para la escena final, la espada se clava en la nieve
+  - Un mapa tatuado en la espalda del capitán
+  - Nombre para una ciudad Brumaria
+  - hmm quizás la reina no está muerta sino dormida
+  - El protagonista le promete a su hermana volver antes del invierno
+  - Uniformes grises con botones de hueso para la guardia
+  - Esto va en la ficha de la elfa, le teme a los espejos
+  - En el archivo de ideas escribe que habrá un torneo de magos
+  - la luna tiene una grieta que se ve desde todo el reino
+  - Quiero dejar registrado que el mercenario ama a la reina
+  - Tres hermanas brujas que comparten un solo ojo
+  - El capítulo siete arranca con una carta sin firma
+  - Olor a canela en la casa de la abuela
+  - Anótalo porfa, el dragón perdió un ala en la última guerra
+
+tarea:
+  - el lunes a las diez reunión con la editorial no me dejes olvidarlo
+  - Todavía no mando la factura del mes pasado, hay que hacerlo
+  - Checar mañana si ya aprobaron el capítulo
+  - Pendiente llamar al banco por el pago de la tableta
+  - tengo la entrega del concurso el quince, apúntalo
+  - No he terminado los fondos del capítulo cuatro, que quede como pendiente
+  - Hoy en la noche retocar sombras de la portada
+  - Me comprometí a enviar tres bocetos a Carla
+  - Recordatorio, comprar baterías para el lápiz
+  - Hay que subir el capítulo a Tapas también
+  - Dejar listas las viñetas del prólogo para el martes
+  - Lo de la imprenta, llamar antes del mediodía
+  - Toca limpiar el escritorio de la computadora de archivos viejos
+  - pasado mañana reviso el guion con Mario
+  - Tengo que estudiar color una hora antes de dormir
+  - Agendar la publicación del capítulo tres para el viernes a las seis
+  - Terminar esta semana la ficha técnica del proyecto
+  - Anota de pendiente responder el mensaje de la plataforma coreana
+  - Mandar las páginas corregidas a Laura hoy
+  - Me falta todavía entintar la escena del mercado
+
+imagen:
+  - Oye me gustaría ver a la reina dormida en una cama de cristal
+  - Una imagen rápida de las tres hermanas brujas porfa
+  - Cómo se vería Brumaria entre la niebla, hazla
+  - Quiero la portada del capítulo siete con la carta sin firma
+  - Hazme al capitán de espaldas mostrando el mapa tatuado
+  - Genérame la biblioteca prohibida en el sótano estilo anime oscuro
+  - A la misma bruja ahora ponle un sombrero picudo
+  - Otra más pero con la luna agrietada al fondo
+  - Crea un niño del orfanato con ojos brillantes tipo ficha
+  - Creo una imagen del dragón con un ala rota
+  - Dibújame a la guardia con uniformes grises
+  - Me enseñas cómo quedaría la espada clavada en la nieve
+  - Ilustración del torneo de magos con mucho público
+  - Genera el emblema del reino con una luna y una espada
+  - Un retrato de la abuela en la cocina con estilo acuarela
+  - Hazme un fondo de calle de noche para el capítulo cinco
+  - Imagina y genera cómo sería el protagonista de viejo
+  - Crea una guerrera con armadura roja y lanza estilo manhwa
+  - Pinta la escena de las campanas sonando en la ciudad
+  - Necesito una imagen del mercado con olor a especias y mucha gente
+
+consulta:
+  - Qué es mejor, Clip Studio o Photoshop, para webtoon
+  - Oye y cuántas viñetas por capítulo pongo más o menos
+  - Dudas, se puede vender un webtoon a una editorial
+  - Cómo le hago para que los personajes no cambien de cara
+  - Qué pasó con lo que te pregunté de los pinceles
+  - Tú sabes qué tamaño tienen los globos normalmente
+  - Me dices qué comandos existen
+  - Cuántas tareas me quedan por hacer
+  - Qué tengo anotado de la reina
+  - Recuérdame cómo se llamaba la ciudad de la niebla
+  - A qué hora conviene publicar en Latinoamérica
+  - Cuál es la resolución ideal para colorear
+  - Qué significa hacer un storyboard en miniatura
+  - Hay que pagar para publicar en Webtoon
+  - Qué es el efecto de profundidad de campo
+  - Oye cómo va todo
+  - Me aclaras qué diferencia hay entre arco y temporada
+  - Es normal tardar una semana en un capítulo
+  - Qué opciones de exportación me recomiendas
+  - Cuántos personajes tengo creados en el proyecto
+
+analisis:
+  - Tú qué harías con el final de la reina
+  - Siento que algo falla en el arco dos, revísalo
+  - Lee mis notas de la guerra y dime si se sostiene
+  - Tiene coherencia que el dragón perdiera el ala antes de la guerra
+  - Está muy forzado lo del mercenario enamorado
+  - Con lo que tengo, la villana es mejor que el protagonista
+  - Dime si las tres hermanas aportan algo o sobran
+  - Qué fallos le ves a mi historia
+  - Revisa si hay contradicciones en las fechas de los capítulos
+  - La trama del orfanato encaja con el tono general
+  - Analiza qué tan bien presento a los personajes en el capítulo uno
+  - Opina de mi sistema de magia
+  - Hace falta más conflicto en la primera mitad
+  - Evalúa si el mundo se siente vivo
+  - Cómo mejorarías la relación entre los hermanos según lo que escribí
+  - Profundiza en el tema de la muerte en mi historia y dime si está bien tratado
+  - Qué tanto engancha el prólogo comparado con el capítulo dos
+  - Haz de crítico y destroza mi primer arco
+  - Revisa lo de la biblioteca prohibida y dime si aporta a la trama
+  - Estoy dudando del giro final, analízalo
+
+busqueda:
+  - Referencias de internet de uniformes de la primera guerra
+  - Busca cómo eran los orfanatos antiguos
+  - Me consigues fotos de campanarios de iglesias
+  - Investiga en la web sobre brujas en la mitología eslava
+  - Encuentra fotos de bibliotecas antiguas
+  - Busca ejemplos de cartas antiguas sin firma
+  - Quiero fotos reales de niebla en ciudades
+  - Busca en internet tutoriales de cristal y reflejos
+  - Búscame webtoons con reinas como protagonistas
+  - Busca información de cómo vender derechos de un webtoon
+  - Fotos de referencia de dragones en esculturas, búscalas
+  - Busca en Pinterest sombreros de bruja
+  - Encuéntrame artistas que pinten con acuarela digital
+  - Busca en la web emblemas heráldicos
+  - Investiga cómo se hacían los mapas en tatuajes
+  - Busca fotos de lanzas medievales
+  - Buscar precios de impresión de cómics
+  - Busca referencias de cocinas antiguas para la casa de la abuela
+  - Consígueme videos de campanas sonando
+  - Búscame en internet noticias de la industria del manhwa

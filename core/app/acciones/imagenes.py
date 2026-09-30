@@ -111,11 +111,13 @@ class GeneradorImagenes:
             if carpeta.exists() else []
         return f"{base}{max(usados, default=0) + 1}"
 
-    async def crear(self, idea: str, proyecto: str | None) -> Resultado:
-        prompt = await self.mejorar_prompt(idea)
+    async def crear(self, idea: str, proyecto: str | None, prompt: str | None = None,
+                    nombre: str | None = None) -> Resultado:
+        """`prompt` y `nombre` los da el intérprete (GPT) si entendió el pedido; si no, se deducen."""
+        prompt = prompt or await self.mejorar_prompt(idea)
         img = await self.cadena.generar(prompt)
         carpeta = self.carpeta(proyecto)
-        nombre = self.siguiente(carpeta, self.nombre(idea, proyecto))
+        nombre = self.siguiente(carpeta, nombre or self.nombre(idea, proyecto))
         ruta_img, ruta_nota = carpeta / f"{nombre}{img.extension}", carpeta / f"{nombre}.md"
         escritor.escribir_atomico(ruta_img, img.datos)
         meta = {

@@ -80,21 +80,17 @@ class Boveda:
         return None
 
     def crear_proyecto(self, nombre: str, descripcion: str = "") -> str:
+        """Solo la carpeta y su índice (_proyecto.md, con los alias). Nada de esqueleto: las
+        carpetas y archivos aparecen cuando hay algo que guardar en ellos (decidido el 2026-09-30)."""
         visible = escritor.nombre_carpeta(nombre)
         existente = self.buscar_proyecto(visible)
         if existente:
             return existente
         carpeta = self.carpeta_proyectos / visible
-        for sub in self.cfg["subcarpetas"]:
-            (carpeta / sub).mkdir(parents=True, exist_ok=True)
         fecha = self.ahora().strftime("%Y-%m-%d")
-        indice = escritor.con_frontmatter(
-            {"tipo": "proyecto", "creado": fecha, "aliases": []},
-            f"# {visible}\n\n{descripcion or 'Descripción del proyecto.'}\n\n"
-            "## Enlaces\n\n- [[tareas]]\n",
-        )
+        cuerpo = f"# {visible}\n" + (f"\n{descripcion.strip()}\n" if descripcion.strip() else "")
+        indice = escritor.con_frontmatter({"tipo": "proyecto", "creado": fecha, "aliases": []}, cuerpo)
         escritor.escribir_atomico(carpeta / "_proyecto.md", indice)
-        escritor.escribir_atomico(carpeta / "tareas.md", f"# Tareas de {visible}\n\n")
         return visible
 
     # --- notas y tareas -------------------------------------------------------
@@ -112,7 +108,7 @@ class Boveda:
         return self.carpeta_proyectos / proyecto / f"{sub}.md"
 
     def guardar_nota(self, texto: str, proyecto: str | None = None, tipo: str = "general",
-                     origen: str = "telegram", aparte: bool = False) -> Path:
+                     origen: str = "telegram", aparte: bool = False, titulo: str | None = None) -> Path:
         """Por defecto agrega la nota al final del archivo de su tipo; con aparte=True crea
         un archivo propio con nombre único (solo cuando el usuario lo pide)."""
         texto = texto.strip()
@@ -120,22 +116,40 @@ class Boveda:
             raise ValueError("La nota está vacía")
         ahora = self.ahora()
         if aparte:
-            return self._nota_aparte(texto, proyecto, tipo, origen, ahora)
+            return self._nota_aparte(texto, proyecto, tipo, origen, ahora, titulo)
         ruta = self.archivo_notas(proyecto, tipo)
         nombre = f"{ruta.stem} de {proyecto}" if proyecto else "Notas sin proyecto"
         cabecera = escritor.con_frontmatter({"tipo": "notas", "proyecto": proyecto}, f"# {nombre}\n")
-        encabezado = f"{ahora.strftime('%Y-%m-%d %H:%M')} · {'voz' if origen == 'voz' else 'texto'}"
+        encabezado = self._encabezado(ahora, origen)
         escritor.agregar_al_final(ruta, f"\n## {encabezado}\n\n{texto}", encabezado=cabecera)
         self.registrar_diario(f"Nota en [[{self.enlace(ruta)}#{encabezado}|{nombre}]]")
         return ruta
 
+    @staticmethod
+    def _encabezado(ahora: datetime, origen: str) -> str:
+        return f"{ahora.strftime('%Y-%m-%d %H:%M')} · {'voz' if origen == 'voz' else 'texto'}"
+
+    def agregar_a_archivo(self, ruta: Path, texto: str, origen: str = "telegram") -> Path:
+        """Agrega una nota al final de un archivo que ya existe y que el usuario nombró
+        ("anota en referencia elfa que…"). Solo agrega: no toca lo que ya estaba escrito."""
+        texto = texto.strip()
+        if not texto:
+            raise ValueError("La nota está vacía")
+        if not ruta.is_file() or not ruta.resolve().is_relative_to(self.raiz.resolve()):
+            raise ValueError(f"No encuentro el archivo {ruta.name} en la bóveda")
+        encabezado = self._encabezado(self.ahora(), origen)
+        escritor.agregar_al_final(ruta, f"\n## {encabezado}\n\n{texto}")
+        self.registrar_diario(f"Nota en [[{self.enlace(ruta)}#{encabezado}|{ruta.stem}]]")
+        return ruta
+
     def _nota_aparte(self, texto: str, proyecto: str | None, tipo: str, origen: str,
-                     ahora: datetime) -> Path:
+                     ahora: datetime, titulo: str | None = None) -> Path:
         primera = texto.splitlines()[0]
-        titulo = primera[:80] + ("…" if len(primera) > 80 else "")
+        titulo = (titulo or "").strip() or primera[:80] + ("…" if len(primera) > 80 else "")
         meta = {"tipo": tipo, "proyecto": proyecto, "fecha": ahora.strftime("%Y-%m-%dT%H:%M"),
                 "origen": origen, "tags": []}
-        ruta = escritor.ruta_unica(self.carpeta_para(proyecto, tipo), titulo, ".md", ahora)
+        carpeta = self.carpeta_proyectos / proyecto if proyecto else self.bandeja
+        ruta = escritor.ruta_unica(carpeta, titulo, ".md", ahora)
         escritor.escribir_atomico(ruta, escritor.con_frontmatter(meta, f"# {titulo}\n\n{texto}\n"))
         self.registrar_diario(f"Nota [[{ruta.stem}]]" + (f" en {proyecto}" if proyecto else ""))
         return ruta

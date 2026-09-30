@@ -511,8 +511,8 @@ tengo que terminar el storyboard del capítulo 3
 
 Abre Obsidian en el móvil y busca:
 
-- `Proyectos/Webtoon/` con todas sus subcarpetas;
-- la nota en `Proyectos/Webtoon/Ideas/`, con su encabezado YAML;
+- `Proyectos/Webtoon/` con solo `_proyecto.md` (sin carpetas vacías: aparecen cuando hacen falta);
+- la nota en un archivo del proyecto (con OpenClaw lo elige el redactor; sin él, `Ideas.md`);
 - `terminar el storyboard del capítulo 3` en `tareas.md` (el bot quita el "tengo que");
 - una línea con el enlace a la nota en `Diario/<fecha>.md`.
 
@@ -537,6 +537,20 @@ Sigue el recorrido de *"tengo que terminar el storyboard"* con el código abiert
 Y si escribes algo ambiguo, como *"la villana usa una máscara de zorro"*: ninguna regla
 coincide, la confianza queda en 0.45 (menos de 0.50), y el bot pregunta con botones.
 El texto queda guardado en memoria 10 minutos esperando tu respuesta.
+
+### Desde el 2026-09-30: lo concreto en local, lo que hay que guardar lo organiza el redactor
+
+Con OpenClaw configurado, un mensaje sin comando (texto o voz, `procesar` en `telegram_bot.py`) sigue
+este camino:
+
+| # | Qué ocurre | Dónde está | Por qué |
+| --- | --- | --- | --- |
+| 1 | ¿Es una orden de frase fija? ("tarea: …", "dime mis tareas", "anota en mi diario…", "cambia al proyecto X", "estado", "limpia los temporales") | `orden_hablada` en `reglas.py` | No requiere razonar: se resuelve al instante y sin tokens |
+| 2 | Si no, ChatGPT dice **qué** quieres (nota, personaje, consulta, imagen…) con un contexto corto | `router/interprete.py` | Entiende frases libres y lo que se dijo antes ("así será Aely") |
+| 3 | Si es guardar algo, el **redactor** recibe tu mensaje y el contenido real del proyecto y devuelve operaciones: agregar a un archivo o a una sección de una ficha, crear un archivo o una ficha | `acciones/redactor.py` | Decidir **dónde** va cada dato necesita leer lo que ya escribiste |
+| 4 | El código valida cada operación: solo agrega, no sale del proyecto, no toca `Imagenes/` ni `Analisis/`, y comprueba que tus palabras aparezcan en lo escrito (si faltan muchas, guarda también tu mensaje original, plegado) | `redactor.validar` y `redactor.cobertura` | El modelo propone; las reglas de la bóveda las impone el código |
+| 5 | Si falta algo (el nombre del personaje), pregunta; tu respuesta llega como mensaje normal y se une a la anterior | `ctx.recordar(accion="pregunta")` | Sin estados especiales: el contexto viaja en `ultima_accion` |
+| 6 | Si GPT no responde, la nota se guarda por tipo (`Ideas.md`, `Historia.md`…) | `notas.guardar` | Ninguna idea se pierde |
 
 ### Tres decisiones de diseño que vale la pena entender
 

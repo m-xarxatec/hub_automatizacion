@@ -87,6 +87,15 @@ def con_frontmatter(meta: dict[str, Any], cuerpo: str) -> str:
     return f"---\n{cabecera}\n---\n{cuerpo.rstrip()}\n"
 
 
+def sin_frontmatter(texto: str) -> str:
+    """El cuerpo de la nota, sin el bloque --- … --- del principio."""
+    if texto.startswith("---\n"):
+        fin = texto.find("\n---", 4)
+        if fin != -1:
+            return texto[fin + 4:].lstrip("\n")
+    return texto
+
+
 def leer_frontmatter(ruta: Path) -> dict[str, Any]:
     try:
         texto = ruta.read_text(encoding="utf-8")

@@ -1653,6 +1653,489 @@ listarlo entre los 3 plugins.
 la etiqueta `main` hacia adelante: no hay nada que combinar ni commit nuevo. Los conflictos vienen de los cambios sin
 confirmar, por eso se guardan antes en un *stash* y se reaplican después.
 
+## 2026-09-29 — Bóveda vaciada tras las pruebas; diagnóstico de las notas mal ubicadas
+
+**Qué se hizo**
+- Revisión de las últimas notas: el router **acertó** la acción (las 4 eran notas); lo que falló fue el destino y el
+  contenido. "Anota en el archivo referencia elfa…" terminó en `Ideas.md`/`Historia.md` con la orden completa como
+  texto, y "no la agregues a historia, agrégala a referencia elfa" se guardó como otra nota (y quedó en
+  `aprendidos.yaml` como ejemplo de `nota`). Causas: el bot no sabe escribir en un archivo existente que se le nombra,
+  no separa la orden del contenido y no entiende correcciones de destino. `Referencia elfa.md` la creó el usuario en
+  Obsidian, en la raíz (ubicación por defecto de las notas nuevas).
+- A pedido del usuario, bóveda vaciada: se borraron `Proyectos/` (webtoon), `Diario/`, `Referencia elfa.md`, la imagen
+  suelta de la raíz y `.stversions`. Respaldo previo en `~/Respaldos/boveda-pruebas-2026-09-29.tar.gz` (65 entradas).
+- Borrado confirmado por los 4 equipos con `syncthing cli debug file` (modo depuración encendido y apagado).
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `~/Boveda` (fuera del repo) | Solo quedan `.stfolder`, `.stignore`, `.obsidian`, `_hub/` (latido y plantillas) y `00-Bandeja/` vacía |
+| `~/Respaldos/boveda-pruebas-2026-09-29.tar.gz` | Copia completa anterior a la limpieza |
+
+**Decisiones y por qué**
+- **Se conservan `.stfolder`, `.stignore`, `.obsidian` y `_hub/`:** sin el primero Syncthing deja de sincronizar la
+  carpeta; `.obsidian` es la configuración de Obsidian en todos los equipos; `_hub/servidor.json` es el latido que
+  impide dos servidores a la vez.
+- **Respaldo antes de borrar:** el borrado se propaga a todos los equipos y no tiene vuelta atrás desde Syncthing.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| El bot en la laptop recuerda "webtoon" como proyecto activo; una nota lo recrearía a medias | Empezar con `/proyecto nuevo <nombre>` |
+
+**Resultado:** bóveda vacía en los 4 equipos; ninguna prueba de código afectada (no hubo cambios de código).
+
+**Cómo probarlo:** en Obsidian de cualquier equipo, solo se ve `00-Bandeja` (y `_hub`).
+
+**Qué aprendiste: en una carpeta sincronizada, borrar es global.** Syncthing no distingue entre "limpiar mi copia" y
+"borrar para todos": propaga el borrado como cualquier otro cambio. Por eso el respaldo se hace fuera de la carpeta
+sincronizada, y se conservan los archivos que la hacen funcionar (`.stfolder`).
+
+## 2026-09-29 — Router: medición honesta, 600 ejemplos en el estilo del usuario y pruebas en GPU
+
+**Qué se hizo**
+- Conjunto de **prueba** (`prueba.yaml`, 150 frases: reales de la bóveda, las de `lista_entrenamiento.md` y nuevas) y,
+  después de ajustar con él, una **prueba ciega** (`prueba_ciega.yaml`, 120 frases más difíciles) que no se usó para
+  decidir nada. Ninguna frase de prueba se entrena (lo vigila una prueba automática).
+- `scripts/evaluar_router.py`: mide reglas + SetFit sin IA. Además de los aciertos cuenta **"ejecuta mal"** (seguro,
+  equivocado y sin preguntar: el peor error) y **"duda"** (botones o IA). Entrena candidatos en
+  `datos/router-candidatos/` sin tocar el modelo del bot ni la carpeta que comparte Syncthing.
+- `ejemplos.yaml` de 20 a **100 frases por acción**, escritas como habla el usuario: dictado, muletillas, sin tildes
+  ni puntuación, errores de Whisper, notas que nombran un archivo, consultas sin "?", análisis como opinión.
+- Entorno aparte `.venv-gpu` (torch 2.14.0+cu130) solo para experimentar en la PC; la imagen de `core` sigue en CPU.
+
+**Resultados (prueba ciega, 120 frases)**
+
+| Modelo | Ejemplos | Acierta | Ejecuta mal | Duda | Entrena | Responde (CPU) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Actual (MiniLM) | 132 | 70,8 % | 12 | 41 | 197 s CPU | ~18 ms |
+| C1 MiniLM | 375 | 87,5 % | 11 | 11 | 583 s CPU | — |
+| C2 MiniLM | 615 | 90,8 % | 9 | 7 | 180 s GPU | 20 ms |
+| C4 MiniLM, 40 iteraciones | 615 | 91,7 % | 8 | 4 | 363 s GPU | ~20 ms |
+| **C3 mpnet, vocabulario congelado** | 615 | **94,2 %** | **7** | 2 | 392 s GPU | 43 ms |
+| C5 mpnet, 40 iteraciones | 615 | 95,0 % | 6 | 1 | 784 s GPU | 43 ms |
+
+En la primera prueba (150 frases) el actual acertaba el 76,7 % y C2 a C5, entre el 98,7 y el 99,3 %.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/router/datos/ejemplos.yaml` | 600 ejemplos (100 por acción) |
+| `core/app/router/datos/prueba.yaml`, `prueba_ciega.yaml` (nuevos) | Frases de evaluación; nunca se entrenan |
+| `core/scripts/evaluar_router.py` (nuevo) | Mide el router y entrena candidatos |
+| `core/app/router/clasificador.py` | `entrenar()`: `epocas`, `congelar_vocabulario`; los metadatos guardan iteraciones, épocas y dispositivo |
+| `core/tests/test_evaluar_router.py` (nuevo) | Pruebas y ejemplos no se solapan; cálculo de "ejecuta mal" y "duda" |
+| `.gitignore` | Ignora `.venv-gpu/` |
+
+**Decisiones y por qué**
+- **Dos pruebas y no una:** al corregir los errores de una prueba se le termina "enseñando el examen". La ciega mide de
+  verdad; por eso da números más bajos.
+- **Vocabulario congelado en mpnet:** su tabla de palabras (250.000 × 768) son ~190 de sus 278 M de parámetros; el
+  optimizador guarda varias copias y no cabe en 4 GB. Con 600 frases no hay nada que aprenderle a esa tabla.
+- **Los datos pesaron más que el modelo:** de 132 a 615 ejemplos, +20 puntos; de MiniLM a mpnet, +3,4; duplicar
+  iteraciones, +1.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| El índice cu128 de PyTorch llega solo hasta 2.11 | Índice cu130 (CUDA 13.0, igual que el driver 580; la GTX 1650 es Turing, 7.5) |
+| Memoria llena en la GPU con mpnet | Vocabulario congelado y `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` |
+| Memoria llena al evaluar tras entrenar, y con MiniLM a 40 iteraciones | El script ya no carga el modelo del bot cuando evalúa un candidato y libera la GPU antes de evaluar |
+| Reinicio de la sesión a mitad del entrenamiento | Los procesos en segundo plano siguieron; resultados en `datos/router-candidatos/*/evaluacion.json` |
+
+**Temperaturas (PC, entrenando en GPU, 17:18-17:25):** GPU máx. 77 °C (99 % de uso, limitada por potencia a 75 W,
+no por calor); CPU (paquete) máx. 85 °C con un solo núcleo ocupado; sensor de la placa máx. 84 °C. En reposo:
+GPU 50 °C, CPU 59 °C. Sin riesgo, pero el calor de la GPU se queda en la caja.
+
+**Resultado:** 257 pruebas de `core` pasan (1 omitida; 6 nuevas). El modelo del bot no se cambió todavía.
+
+**Cómo probarlo:**
+```bash
+cd core && HF_HOME=../modelos/hf ../.venv/bin/python -m scripts.evaluar_router --carpeta ../datos/router \
+  --config ../config.yaml --prueba app/router/datos/prueba_ciega.yaml --modelo ../datos/router-candidatos/c3-mpnet-gpu --errores
+```
+
+**Qué aprendiste: el conjunto de prueba debe ser ciego.** Si miras los errores de una prueba y escribes ejemplos para
+corregirlos, el modelo mejora en esa prueba aunque no mejore de verdad. Por eso se separa una prueba que nunca se mira
+al ajustar: es la única que dice cómo le irá con frases nuevas.
+
+## 2026-09-29 — Reentreno seguro: configuración elegida, prueba real en CPU y control de calidad
+
+**Qué se hizo**
+- mpnet con **10 iteraciones** (en vez de 20) rinde lo mismo en la prueba ciega (93,3 % y 5 errores graves en GPU,
+  contra 94,2 % y 7) y tarda la mitad. Queda como configuración en `config.yaml` (`router.entrenamiento`).
+- **Prueba real en CPU** (como `/reentrenar` en el contenedor): **13 min 48 s**, 92,5 % en la prueba ciega, 6 errores
+  graves. Congelar el vocabulario también acelera la CPU (la estimación previa de 40-50 min era mala).
+- **Control de calidad del reentreno:** antes de reemplazar el modelo, el nuevo se mide con las ~270 frases de prueba
+  y se compara con el que tiene cargado el bot. Si acierta más de 2 puntos menos o tiene más de 2 errores graves de más
+  (o, sin modelo previo, acierta menos del 80 %), se descarta y el bot sigue con el anterior. El bot informa
+  "acierta el 93 % (antes, 71 %)" o el motivo del descarte.
+- `./hub.sh modelos` baja el modelo base que diga `config.yaml`.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/router/evaluacion.py` (nuevo) | Mide un modelo (aciertos, errores graves) y decide si es aceptable |
+| `core/app/router/clasificador.py` | `ModeloRechazado`; `entrenar(control=)` mide el nuevo antes del cambio; usa el modelo en memoria |
+| `core/app/router/cascada.py` | `reentrenar()` con la configuración de `config.yaml` y el control; saca de la medición las frases de prueba que el usuario corrigió |
+| `config.yaml`, `core/app/config.py` | `router.entrenamiento`: mpnet, 10 iteraciones, 1 época, vocabulario congelado |
+| `core/app/entradas/telegram_bot.py` | `/reentrenar` informa la calidad o el descarte (también por voz) |
+| `core/scripts/entrenar_router.py`, `descargar_modelos.py`, `evaluar_router.py` | Misma configuración; resultado de la medición |
+| `core/tests/test_evaluar_router.py`, `test_router_local.py`, `test_bot.py` | 7 pruebas nuevas del control y de los mensajes |
+
+**Decisiones y por qué**
+- **Tolerancia de 2 puntos y 2 errores graves:** entre dos entrenamientos iguales el azar mueve una o dos frases; sin
+  tolerancia se descartarían modelos buenos.
+- **Comparar con el modelo cargado y no con un número guardado:** si cambian las frases de prueba, la comparación
+  sigue siendo justa (los dos se miden con las mismas).
+- **Frases de prueba corregidas por el usuario salen de la medición:** si no, el modelo "se sabría el examen".
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| Entrenando en CPU, el i5-12400F llegó a **100 °C** (media 90 °C, 6 de 42 lecturas ≥ 95 °C); en reposo, 57-60 °C | El procesador se frena solo y no se daña, pero el disipador parece justo. Pendiente: limitar los hilos del entrenamiento |
+
+**Resultado:** 264 pruebas de `core` pasan (1 omitida). El modelo del bot todavía no se cambió.
+
+**Qué aprendiste: una puerta de calidad antes de desplegar.** Entrenar produce un modelo distinto cada vez, y no siempre
+mejor. Medirlo con un examen fijo antes de ponerlo en uso (y quedarse con el anterior si empeora) convierte el
+reentrenamiento en algo que se puede hacer sin miedo.
+
+## 2026-09-29 — Intérprete con GPT como prioridad; SetFit para lo rígido y de respaldo
+
+**Qué se hizo**
+- Prueba del usuario con el bot (mpnet ya instalado): el router **acertó casi siempre la acción**, pero falló en
+  **entender**: "dentro de la ficha de *Carito* vas a colocar…" fue a `Historia.md` con la orden entera (la ficha
+  era *Karito*: Whisper escribe distinto), "esa imagen no me gusta, hazla anime" se guardó como nota, "vamos a crear
+  un proyecto nuevo…" como tarea, la ficha de un personaje nuevo quedó sin descripción y la imagen se llamó
+  "ensename1". Son problemas de comprensión (destino, contenido, contexto, nombres), no de clasificación.
+- Decisión del usuario: **GPT con prioridad** para interpretar los mensajes libres y **SetFit con los comandos
+  rígidos** y como respaldo. Nuevo `router/interprete.py`: ChatGPT (`gpt-6-luna`, solo ese modelo) recibe el mensaje
+  y un contexto corto (proyecto, nombres de archivos, fichas con un resumen, última acción del bot) y devuelve JSON
+  con acción, confianza, contenido sin la orden, destino, tipo, personaje, descripción, prompt y nombre de imagen,
+  proyecto. Acciones nuevas: `rehacer_imagen`, `personaje`, `proyecto`, `mover_nota`.
+- En el bot: rígido (local, sin tokens) → intérprete → si GPT no responde, router local **sin IA** → botones.
+  Confianza de GPT < 0,6 → botones. Lo que GPT decide donde SetFit fallaba o dudaba se guarda como aprendido.
+- "No ahí, ponla en X" **copia** la última nota a X y avisa dónde quedó la anterior: el bot nunca borra (decisión 6).
+- Limpieza: bóveda vaciada otra vez (respaldo `~/Respaldos/boveda-pruebas-2026-09-29-b.tar.gz`); quitados de
+  `aprendidos.yaml` "crear un proyecto…" → tarea y "no la agregues a historia…" → nota; borrados los modelos
+  candidatos (~5 GB; quedan sus mediciones y el respaldo del MiniLM).
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/router/interprete.py` (nuevo) | Contexto, llamada a GPT, extracción del JSON (un reintento), validación de destinos |
+| `core/app/entradas/telegram_bot.py` | `orden_rigida`, `por_interprete`, `aplicar`, `guardar_interpretada`, `mover_nota`; contexto de la última acción; `/estado` y `/ayuda` |
+| `core/app/boveda/proyectos.py` | `agregar_a_archivo()` (solo agrega, dentro de la bóveda); archivo propio con título |
+| `core/app/acciones/personajes.py` | `fichas()` del proyecto |
+| `core/app/acciones/imagenes.py` | `crear(prompt=, nombre=)` con lo que decide GPT |
+| `core/app/router/cascada.py` | `decidir(sin_ia=)`, `aprender_de()` |
+| `core/app/main.py`, `config.yaml`, `core/app/config.py` | `router.interprete` (activo, timeout 20 s, 400 tokens de salida) |
+| `CLAUDE.md` | Decisión 2 actualizada |
+| `core/tests/test_interprete.py` (nuevo) | 19 pruebas: validación, contexto, gateway, y el bot de punta a punta |
+
+**Decisiones y por qué**
+- **Solo ChatGPT, sin Haiku de respaldo:** Haiku por Claude Code cuesta ~3.600 tokens por mensaje; para eso está SetFit.
+- **El destino se elige de una lista real:** el modelo nunca da una ruta; si nombra algo que no está, se ignora.
+- **La ficha solo sirve para los prompts de imagen:** en las notas, GPT omitía datos que ya estaban en la ficha y
+  agregaba otros de la ficha. Se le prohibió: el contenido sale solo del mensaje, completo.
+- **Copiar en vez de mover:** la decisión 6 (nunca se borra) se mantiene sin excepciones.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| Una respuesta de GPT no fue JSON válido | Se extrae el `{…}` aunque venga con texto; si no hay, un reintento |
+| "¿Te parece bien que la villana…?" salía como consulta | Descripciones: análisis = opinión sobre *su* historia (lee sus notas); consulta = pregunta general |
+| Instrucciones de ~600 tokens | Reescritas: ~500 tokens de entrada por mensaje (antes ~700) |
+| GPT perdía "tiene 200 años" (ya estaba en la ficha) e inventaba la edad en otra descripción | "Solo del mensaje, sin omitir aunque esté en la ficha, sin agregar de la ficha" |
+| La consulta respondía dentro de `contenido` | En consulta y análisis, contenido vacío |
+| GPT eligió la ficha como archivo | El bot la trata como ficha (va a "## Notas") |
+
+**Resultado:** 283 pruebas de `core` pasan (1 omitida). Con ChatGPT real y las 11 frases del usuario de hoy: 11 de 11
+bien, en dos repeticiones; ~500 tokens de entrada y 40-100 de salida (170 al escribir un prompt de imagen), 2-4 s.
+
+**Cómo probarlo:** `/proyecto nuevo Webtoon`, "crea un personaje llamado Karito, una villana zorro", "en la ficha de
+Carito anota que tiene 200 años", "enséñame cómo sería con armadura corta", "no me gusta, hazla estilo anime".
+`./hub.sh logs` muestra por mensaje: acción de GPT, lo que habría dicho SetFit y el tipo de destino (sin el texto).
+
+**Qué aprendiste: clasificar no es entender.** Un clasificador elige entre unas pocas cajas; el usuario, en cambio,
+habla de *dónde*, *qué*, *a quién* y *lo de antes*. Para eso hace falta un modelo de lenguaje con contexto, pero
+atado: salida en JSON, destinos elegidos de una lista real y validación de todo lo que devuelve.
+
+## 2026-09-29 — Intérprete más inteligente: `gpt-6-sol` e instrucciones de rutas y notas
+
+**Qué se hizo**
+- Revisión de la segunda prueba del usuario (historia de Kael): la trama iba a `Ideas.md` en vez de `Historia.md`,
+  "el protagonista se va a llamar Kael…" era una nota y no una ficha, "crea la ficha de Kael" la dejaba sin
+  descripción (los datos estaban en el mensaje anterior), la descripción de una ficha existente iba a "## Notas" y
+  "el estilo del webtoon…" terminó al final de `_proyecto.md` (el índice del proyecto).
+- **Instrucciones:** definición de cada tipo de nota (historia = trama, personajes, mundo; producción = estilo de
+  dibujo, formato, publicación…); presentar un personaje con nombre crea su ficha; "crea su ficha" usa la última acción.
+- **Código:** `_proyecto.md` y `tareas.md` ya no se ofrecen como destino; si la ficha existe y su "## Descripción"
+  está vacía, la descripción va ahí (`personajes.descripcion_vacia`).
+- **Modelo configurable** (`router.interprete.modelo` y `razonamiento`) y **comparación** con 24 frases reales del
+  usuario (acción, destino y datos que no se pueden perder):
+
+| Configuración | Bien | Tokens por mensaje | Espera |
+| --- | --- | --- | --- |
+| `gpt-6-luna` bajo (anterior) | 23/24 | 672 + 63 | 2,8 s |
+| `gpt-6-luna` medio | 24/24 | 672 + 128 | 6,0 s |
+| **`gpt-6-sol` bajo (elegido)** | **24/24 y 24/24** | 672 + 65-71 | 3,6-5,0 s |
+| `gpt-6-sol` medio | 24/24 | 672 + 127 | 5,9 s |
+
+  ("Bien" cuenta como acierto elegir `Historia.md` por nombre en vez del tipo "historia": es el mismo archivo.)
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/router/interprete.py` | Tipos definidos, personajes presentados, referencias a lo anterior; sin `_proyecto.md` ni `tareas.md` |
+| `core/app/acciones/personajes.py` | La descripción completa una "## Descripción" vacía |
+| `core/app/main.py`, `config.yaml`, `core/app/config.py` | Modelo y razonamiento del intérprete: `gpt-6-sol`, bajo, 30 s, 500 tokens |
+| `core/tests/test_interprete.py` | Pruebas de la descripción y de los destinos excluidos |
+
+**Decisiones y por qué**
+- **`gpt-6-sol` bajo y no razonamiento medio:** acierta igual o más con casi los mismos tokens; el razonamiento medio
+  duplica los tokens de salida y la espera sin mejorar.
+- **Claude descartado para cada mensaje:** por Claude Code suma ~3.700 tokens de instrucciones propias.
+
+**Problemas encontrados**
+
+| Problema | Solución |
+| --- | --- |
+| `./hub.sh arrancar` no recreó `core` tras cambiar `config.yaml` | `docker compose up -d --no-deps --force-recreate core` |
+
+**Resultado:** 284 pruebas de `core` pasan (1 omitida). Bot en marcha con `gpt-6-sol`. Costo de la comparación:
+~120 llamadas, unos 90.000 tokens de la suscripción de ChatGPT.
+
+**Qué aprendiste: primero las instrucciones, después el modelo.** La mayoría de los fallos venían de que el modelo no
+sabía qué significa "historia" o "producción" para el usuario, ni que `_proyecto.md` es un índice. Con eso aclarado,
+hasta el modelo chico acertaba 23 de 24; el grande cierra la diferencia y da margen para frases más raras.
+
+## 2026-09-29 — Resumen: dónde quedó el router y qué funciones tiene
+
+Entrada de referencia (cierre del día): cómo decide hoy el bot qué hacer con cada mensaje, dónde vive cada pieza y
+qué queda pendiente. Reemplaza, como descripción del router, a las entradas anteriores del día 3 y del día 5.
+
+**Recorrido de un mensaje** (texto o nota de voz ya transcrita por Whisper):
+
+| Paso | Qué hace | Dónde | Tokens |
+| --- | --- | --- | --- |
+| 1. Comandos | `/nota`, `/tarea`, `/proyecto`, `/img`, `/analisis`… se ejecutan tal cual | `entradas/telegram_bot.py` | 0 |
+| 2. Órdenes rígidas | Respuesta a una pregunta del bot (nombre de un personaje), "la imagen que se acaba de crear será X" | `orden_rigida()`, `reglas.renombrar_imagen` | 0 |
+| 3. Órdenes habladas de prefijo fijo | "nota idea, …", "tarea: …", "cambia al proyecto X", "crea un proyecto nuevo…", "tareas", "estado" | `reglas.orden_hablada` | 0 |
+| 4. **Intérprete (prioridad)** | `gpt-6-sol` (razonamiento bajo) entiende acción, destino, contenido sin la orden, personaje, prompt de imagen | `router/interprete.py`, `por_interprete()` | ~670 + ~70 |
+| 5. Respaldo local | Si GPT no responde: reglas + SetFit (mpnet), **sin volver a llamar a la IA**; crear personaje o archivo propio por reglas | `router/cascada.py` (`decidir(sin_ia=True)`), `orden_directa()` | 0 |
+| 6. Botones | Confianza baja (GPT < 0,6 o SetFit dudoso): el usuario elige; su elección se guarda como corrección | `resolver()`, `teclado_acciones()` | 0 |
+
+**Acciones que entiende el intérprete**
+
+| Acción | Qué hace el bot |
+| --- | --- |
+| `nota` | Guarda solo el contenido: en la ficha de un personaje ("## Notas"), en un archivo existente que se nombra, en un archivo nuevo si se pide, o por tipo (`Ideas.md`, `Historia.md`, `Produccion.md`) |
+| `tarea` | Agrega a `tareas.md` |
+| `consulta` | Responde con ChatGPT (con historial corto) |
+| `analisis` | Modo análisis con botones (modelo y esfuerzo; decisión 4) |
+| `imagen` | Genera con el prompt de GPT (rasgos de la ficha) y un nombre con sentido (`karito1`) |
+| `rehacer_imagen` | "Esa imagen no me gusta, hazla…": nuevo prompt a partir del anterior |
+| `personaje` | Crea la ficha con su descripción (o completa una "## Descripción" vacía) |
+| `proyecto` | Crea o cambia de proyecto |
+| `mover_nota` | "No ahí, ponla en X": copia la última nota a X; la anterior no se borra (decisión 6) |
+| `busqueda` | Responde que llega en la fase 3 y ofrece guardarlo |
+
+**Contexto que recibe GPT en cada mensaje:** proyecto activo, nombres de sus notas (sin imágenes, análisis,
+`_proyecto.md` ni `tareas.md`) y de las notas sueltas de la raíz, fichas de personajes con un resumen de 200
+caracteres, y la última acción del bot en ese chat (válida 30 min: nota con su contenido, o imagen con su prompt).
+El mensaje va dentro del JSON como dato. **Salida validada:** acción conocida, destino elegido de la lista real
+(nunca una ruta del modelo), confianza acotada; si la respuesta no es JSON, un solo reintento.
+
+**SetFit (el "chico")**
+- Modelo: `paraphrase-multilingual-mpnet-base-v2` con vocabulario congelado, 10 iteraciones, 615 ejemplos
+  (100 por acción en el estilo del usuario + correcciones + aprendidos). Instalado en `datos/router/modelo`.
+- Medido con frases que nunca se entrenan: 92,5 % en la prueba ciega (antes 70,8 %).
+- Papel actual: respaldo si GPT falla, y comparación en el log de cada mensaje ("setfit: nota 0,98").
+- **Aprende de GPT** solo donde fallaba o dudaba (`aprender_de` → `datos/router/aprendidos.yaml`).
+- `/reentrenar` (~14 min en CPU; la CPU de la PC llega a 100 °C) con **control de calidad**: el modelo nuevo se
+  mide antes del cambio y, si sale peor, se descarta.
+
+**Configuración** (`config.yaml`, sección `router`): `interprete` (activo, modelo, razonamiento, timeout,
+max_tokens), `entrenamiento` (base, iteraciones, épocas, congelar_vocabulario), umbrales de ejecutar/confirmar.
+Cambiarla exige recrear `core` (`docker compose up -d --no-deps --force-recreate core`).
+
+**Herramientas:** `scripts/evaluar_router.py` (mide o entrena candidatos en `datos/router-candidatos/`, fuera de
+Syncthing), `./hub.sh entrenar`, `./hub.sh modelos` (baja la base de `config.yaml`), `.venv-gpu` (solo PC, para
+experimentar con la GTX 1650).
+
+**Registro:** por cada mensaje, `./hub.sh logs` muestra la acción de GPT, su confianza, lo que habría dicho SetFit
+y el tipo de destino; nunca el texto del usuario.
+
+**Pendiente**
+- Desplegar en la laptop (`git pull`, `.\hub.ps1 modelos`, reentrenar o copiar el modelo) y probar allí.
+- Decidir si SetFit sigue en el camino de cada mensaje o solo como respaldo (hoy suma ~45 ms por mensaje para el log).
+- Limitar los hilos de `/reentrenar` para que la CPU no llegue a 100 °C.
+- "La misma elfa pero…" con la imagen anterior como referencia visual (hoy se rehace desde el prompt).
+- Día 6 (resto) y día 7: `/estado` con gasto y pausas, README y guion de la demo.
+
+**Resultado:** 284 pruebas de `core` pasan (1 omitida). Bot en marcha en la PC con `gpt-6-sol`.
+
+**Qué aprendiste: cada pieza en lo que hace mejor.** Las reglas son exactas y gratis para lo que tiene forma fija;
+SetFit es rápido y local para clasificar; el LLM entiende el lenguaje real (nombres mal transcritos, "eso de antes",
+dónde va cada cosa). Un buen sistema no elige uno: los ordena, usa el más barato que alcanza y deja que el grande
+enseñe al chico.
+
+## 2026-09-30 — Redactor con LLM, proyectos sin esqueleto y lo concreto en local
+
+El usuario probó el bot y lo encontró "muy tonto para crear las notas": guardaba cada mensaje tal cual y en un
+solo lugar, y creaba carpetas y secciones vacías que nadie pidió. Pedido: creación simple (el proyecto es solo su
+carpeta y el bot pregunta qué va dentro), archivos y fichas solo cuando hay algo que poner, más LLM para decidir y
+el router local solo para funciones concretas. Se aceptó gastar más tokens a cambio de calidad.
+
+**Qué se hizo**
+- **Redactor** (`acciones/redactor.py`): con el mensaje, la pista del intérprete, la última acción y el contenido
+  real del proyecto (lo más relacionado primero, hasta 12.000 tokens), `gpt-6-sol` devuelve operaciones
+  `agregar` (al final o dentro de una sección) y `crear` (archivo o ficha), una respuesta corta, avisos de
+  contradicción y, si falta algo, una pregunta. Reparte un mensaje entre historia y fichas y enlaza con `[[…]]`.
+- **El código impone las reglas de la bóveda:** solo agregar (crear sobre algo existente pasa a agregar), rutas
+  dentro del proyecto con nombres válidos en Windows, `Imagenes/`, `Analisis/` y `tareas.md` fuera de su alcance,
+  fichas nuevas en la carpeta de personajes con `tipo: personaje`, y **cobertura**: si lo propuesto deja fuera
+  más del 40 % de las palabras con contenido del mensaje, no se aplica y el mensaje se guarda tal cual.
+- **Sin esqueletos:** `crear_proyecto` hace solo la carpeta y `_proyecto.md` y pregunta "¿De qué trata…?"; la
+  respuesta llega como mensaje normal y el redactor la ubica. Fichas nuevas con solo lo que se sabe (las
+  secciones aparecen al usarse). Fichas nuevas en `Personajes/`; las de `Historia/Personajes/` siguen valiendo.
+  Una ficha es cualquier nota con `tipo: personaje`.
+- **Lo concreto en local, por texto y voz:** `procesar()` une los dos caminos; órdenes de frase fija nuevas:
+  diario ("anota en mi diario que…", `/diario`), limpiar, diagnóstico, modelo, ayuda y conversación nueva.
+- **Contexto:** el bot recuerda las 3 últimas acciones (30 min) y las consultas guardan pregunta y respuesta,
+  así "anota esto" después de una consulta (aunque en medio se cree un proyecto) guarda la respuesta. La
+  consulta lee las notas del proyecto. "Así será Aely" (acción `nombrar_imagen`) renombra la última imagen y la
+  pone en su ficha. El intérprete reintenta una vez si GPT devuelve vacío rápido; sin corte de 400 caracteres.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/acciones/redactor.py` | Nuevo: contexto del proyecto, prompt, validación, cobertura y escritura de las operaciones |
+| `core/app/entradas/telegram_bot.py` | `procesar`, `ejecutar_orden`, `redactar`, `escribiendo`, `/diario`, proyecto con pregunta, 3 últimas acciones, consulta con notas, `nombrar_imagen` en la ficha |
+| `core/app/boveda/proyectos.py` | Proyecto sin subcarpetas ni `tareas.md`; notas aparte en la raíz del proyecto |
+| `core/app/acciones/referencias.py` | `carpeta_personajes` (nueva o la anterior), `fichas_de`, `nombres_de`, ficha sin esqueleto, párrafos separados en secciones |
+| `core/app/acciones/personajes.py` | Fichas por `tipo: personaje`; descripción bajo el título en fichas sin secciones |
+| `core/app/acciones/consulta.py` | `notas_del_proyecto` y notas en el prompt de sistema |
+| `core/app/router/interprete.py` | Acción `nombrar_imagen`, "anota esto", respuesta a una pregunta, reintento, consulta vs. análisis |
+| `core/app/router/reglas.py` | Órdenes fijas: diario, limpiar, diagnóstico, modelo, ayuda, nuevo |
+| `core/app/boveda/escritor.py` | `sin_frontmatter` compartido |
+| `core/app/main.py`, `core/app/config.py`, `config.yaml` | `proveedores.redactor`, `consulta_notas_tokens`, `boveda.personajes` (sale `subcarpetas`) |
+| `core/tests/test_redactor.py` | Nuevo: 23 pruebas (validación, aplicar, cobertura, contexto, modelo simulado y el bot) |
+| `README.md`, `GUIA.md` | Recorrido nuevo (sección 7) y primer arranque sin esqueleto |
+
+**Decisiones y por qué**
+- **Dos pasos (intérprete + redactor) y no uno:** el intérprete sigue rápido y barato para consultas, imágenes y
+  proyectos; solo lo que se guarda paga el contexto grande. Si el redactor falla, queda el camino anterior.
+- **El modelo propone, el código dispone:** las reglas de la bóveda (solo agregar, dentro del proyecto, nombres
+  válidos, no perder palabras) no dependen de que el modelo obedezca.
+- **Razonamiento bajo:** medido con 9 mensajes reales del usuario, organiza igual que el medio y tarda 2-7 s
+  (medio: 3-13 s). Queda en `config.yaml` por si hace falta subirlo.
+- **Preguntas sin estados especiales:** la pregunta del bot se guarda como última acción y la respuesta pasa por
+  el camino normal; intérprete y redactor la unen con el mensaje original.
+
+**Problemas encontrados**
+- Primera prueba real: toda la trama iba a `_proyecto.md` (era el único archivo y "prefiere los existentes") y
+  "¿y la historia?" se tomaba como análisis. Se ajustaron las instrucciones: `_proyecto.md` solo para la premisa;
+  consulta incluye preguntas sobre sus notas, análisis solo si pide analizar o revisar.
+- Mensaje real de las 01:10 ("Anota esto dentro de la idea principal…"): "esto" era la respuesta de una consulta
+  anterior y en medio se creó el proyecto. El bot solo recordaba la última acción y no las consultas: ahora
+  recuerda 3 y las consultas guardan su respuesta.
+- Un archivo grande que no cabía en el contexto se recortaba y dejaba fuera a los chicos: ahora entran primero
+  los que caben enteros. El resumen hablado leía rutas de los enlaces: ahora usa el nombre visible. El aviso
+  "escribiendo…" podía cancelarse antes de salir: el primero se manda de inmediato. Párrafos pegados al agregar
+  dentro de una sección: ahora van separados por una línea en blanco (las viñetas, seguidas).
+- A las 01:13 la bóveda de pruebas quedó vacía: lo hizo el usuario desde el explorador (está en la papelera);
+  las pruebas usan bóvedas temporales.
+
+**Resultado de las pruebas:** 308 pasan (1 omitida) en `.venv` y en la imagen reconstruida. Pruebas reales con
+OpenClaw: 9 mensajes del día anterior (dos niveles de razonamiento) y el bot completo con Telegram simulado y los
+mensajes del usuario de las 01:07-01:10: la consulta, el proyecto por voz, "anota esto…" (guardó la respuesta
+completa como idea principal), tarea y lista de tareas sin tokens (0,0 s), fichas de Elías y Marta enlazadas y
+"¿de qué trata mi proyecto?" respondido con sus notas.
+
+**Cómo probarlo:** `docker compose up -d --no-deps --force-recreate core`; luego `/proyecto nuevo Prueba`,
+responder de qué trata, "Kael es un cazador de monstruos que perdona a Aely, una elfa albina", "ella pelea con
+dos hachas", "crea un personaje herrero" (pregunta el nombre), "crea dentro del proyecto un archivo Mundo y anota
+que…", "tarea: …", "dime mis tareas", "anota en mi diario que…" y "¿de qué trata mi proyecto?". Revisar en
+Obsidian que no haya carpetas ni secciones vacías.
+
+**Qué aprendiste: el modelo propone, el código dispone.** Un LLM decide mejor que cualquier regla dónde va una
+idea, pero no se le confían las garantías: se le pide un plan en JSON y el código lo valida (solo agregar, dentro
+del proyecto, sin perder palabras) antes de tocar un archivo. Así se gana criterio sin perder seguridad, y si el
+modelo falla o se equivoca, el camino anterior sigue ahí.
+
+## 2026-09-30 — Voz: cobertura que no descarta, nombres del proyecto para Whisper e imagen a la ficha
+
+El usuario notó que con audios "le cuesta un poco". Los registros mostraron la causa: de 4 notas de voz, 3 se
+descartaron por el control de cobertura (29 %, 47 % y 57 %; mínimo 60 %) y se guardaron crudas, aunque el redactor
+las había organizado bien. Al hablar se usan futuros ("medirá, estará, será") que el redactor pasa a presente, y más
+relleno ("vale, vas a crear…"); para la cuenta de palabras eso parecía contenido perdido. También Whisper escribió
+"Dikon" por "Deacon", y una imagen pedida "para su ficha" quedó solo en `Imagenes/`.
+
+**Qué se hizo**
+- **Cobertura que no descarta:** si lo escrito deja fuera muchas palabras del mensaje, se guarda lo organizado y,
+  junto a lo primero que se escribe, el mensaje original en un callout plegable de Obsidian
+  (`> [!quote]- Tu audio transcrito original (fecha)`). En el chat se avisa. Umbral 50 % en voz y 60 % en texto;
+  los auxiliares del habla (será, estará, tendrá, podremos, llamar…) no cuentan como contenido y el nombre del
+  proyecto cuenta como escrito.
+- **Pista de Whisper por audio** (`voz/cliente.componer_pista`): proyecto activo, sus personajes (con alias) y los
+  demás proyectos, delante del vocabulario de `config.yaml`, sin pasar de 400 caracteres ni cortar una frase.
+- **Imagen a la ficha si se pide:** si el pedido menciona la ficha y la imagen es de un personaje con ficha, se
+  inserta en "## Referencias visuales" (`en_ficha`). Sin mencionarla, solo en `Imagenes/`.
+- **Fichas:** el redactor usa siempre una sección en las fichas (antes "maneja una moto" quedó como bloque suelto
+  con fecha al final).
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/acciones/redactor.py` | `Plan.cobertura`/`Plan.original`, `bloque_original`, umbral por origen, palabras del habla, regla de secciones en fichas |
+| `core/app/voz/cliente.py` | `componer_pista`; `transcribir(pista=)` |
+| `core/app/entradas/telegram_bot.py` | `pista_voz` en cada audio, `en_ficha` al generar imágenes, sin `SinCobertura` |
+| `core/tests/test_redactor.py`, `core/tests/test_voz.py`, `core/tests/test_bot.py` | 6 pruebas nuevas; la voz falsa registra la pista |
+| `config.yaml`, `GUIA.md` | Comentarios del vocabulario y de la cobertura |
+
+**Decisiones y por qué**
+- **No descartar nunca lo organizado:** descartar protegía contra ideas perdidas, pero tiraba también el orden, que
+  es lo que el usuario quiere. Guardar las dos cosas (la versión ordenada y el original plegado) cumple ambos fines.
+- **Nombres primero en la pista:** Whisper solo usa ~224 tokens de contexto previo y lo que más falla son los
+  nombres propios; el vocabulario general va detrás y se corta si no cabe.
+- **Imagen a la ficha solo si se pide:** el usuario no quiere que el bot haga cosas que no dijo.
+
+**Problemas encontrados**
+- La prueba "si pierde palabras" esperaba un bloque con título en `Historia.md`, pero el archivo no existía y el
+  redactor lo creó: la prueba se corrigió (el comportamiento era el correcto).
+
+**Resultado de las pruebas:** 314 pasan (1 omitida) en `.venv` y en la imagen reconstruida. Reales: (1) Kokoro dijo
+tres frases con "Díkon" y Whisper las transcribió sin y con la pista: la que salía "Dickon" pasó a "Deacon"; las
+otras dos ya salían bien. (2) El bot completo con los audios del usuario (el de "Días del futuro pasado" literal,
+los de Deacon reconstruidos): cobertura 100 %, 67 % y 67-75 %, nada descartado; premisa en `_proyecto.md`, ideas de
+la consulta en `Historia.md`, fichas de Deacon (familia, apariencia, otros datos) y Shirley enlazadas, "personaje
+femenino sin nombre" anotado en la historia y "¿cómo es Deacon?" respondido con sus notas. Scripts en
+`datos/pruebas/` (fuera de git).
+
+**Cómo probarlo:** recrear `core`; con un proyecto activo que tenga fichas, mandar audios describiendo personajes
+en futuro ("será…, medirá…"); revisar en Obsidian que todo quede ordenado y, si aparece un bloque "Tu audio
+transcrito original", que esté plegado junto a lo escrito. Pedir "una imagen de X para su ficha" y comprobar que
+aparece en "## Referencias visuales".
+
+**Qué aprendiste: una red de seguridad no debe romper lo que protege.** El control de cobertura evitaba perder
+ideas, pero al descartar el plan entero perdía el orden, que era el objetivo. La versión buena conserva ambos:
+aplica lo organizado y guarda el original a un lado, plegado. Medir con datos reales (los registros de cobertura)
+mostró el problema sin adivinar.
+
 ## 2026-09-29 — `/reentrenar` en Windows: soltar el modelo antes de reemplazarlo
 
 **Qué se hizo**

@@ -17,7 +17,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
-from . import clasificador, ejemplos, reglas
+from . import clasificador, ejemplos, evaluacion, reglas
 from .reglas import Decision
 
 
@@ -55,6 +55,8 @@ class Router:
         self.acciones = list(cfg.get("acciones", []))
         self.acciones_texto = ejemplos.acciones_de_texto(self.acciones)
         self.llm = llm if cfg.get("segunda_opinion", True) else None
+        # Cómo se entrena (base, iteraciones, épocas, vocabulario congelado): config.yaml.
+        self.entrenamiento = dict(cfg.get("entrenamiento") or {})
         # carpeta = /datos/router: el modelo va en modelo/ y las correcciones al lado.
         self.carpeta = carpeta
         self.carpeta_modelo = carpeta / "modelo"
@@ -74,7 +76,8 @@ class Router:
             return texto
         return texto + (" + IA si duda (OpenClaw)" if getattr(self.llm, "confiable", False) else " + LLM local")
 
-    async def decidir(self, texto: str, tiene_imagen: bool = False) -> Decision:
+    async def decidir(self, texto: str, tiene_imagen: bool = False, sin_ia: bool = False) -> Decision:
+        """`sin_ia`: solo reglas y SetFit (el intérprete con GPT ya falló; no se reintenta)."""
         # Las imágenes con pie de foto siempre pasan por reglas: son patrones fijos.
         if tiene_imagen:
             return reglas.decidir(texto, tiene_imagen=True)
@@ -84,7 +87,7 @@ class Router:
             propuesta = await asyncio.to_thread(modelo.predecir, texto)
             if propuesta.accion in self.acciones_texto and propuesta.confianza >= self.umbral_confirmar:
                 decision = propuesta
-        if self.llm is None or (self.nivel(decision) == "ejecutar" and not contradice(texto, decision)):
+        if sin_ia or self.llm is None or (self.nivel(decision) == "ejecutar" and not contradice(texto, decision)):
             return decision
         if contradice(texto, decision):
             # Mientras la IA no opine, que no se guarde sola: como mucho, con confirmación.
@@ -148,12 +151,23 @@ class Router:
             return False
         return ejemplos.guardar_aprendido(self.carpeta, texto, decision.accion)
 
+    def aprender_de(self, texto: str, accion: str) -> bool:
+        """Lo que decidió el intérprete (GPT) donde SetFit fallaba o dudaba: ejemplo para /reentrenar."""
+        if accion not in self.acciones_texto or not texto.strip():
+            return False
+        return ejemplos.guardar_aprendido(self.carpeta, texto, accion)
+
     def reentrenar(self, ruta_ejemplos: Path = ejemplos.EJEMPLOS_BASE) -> dict:
-        """Entrena con ejemplos + aprendidos + correcciones y recarga el modelo. Tarda: llamar en un hilo."""
+        """Entrena con ejemplos + aprendidos + correcciones y recarga el modelo. Tarda: llamar en un hilo.
+
+        Antes de reemplazar el modelo se mide con las frases de prueba: si sale claramente peor que
+        el actual, se descarta (clasificador.ModeloRechazado) y el bot sigue con el anterior.
+        """
         correcciones = ejemplos.leer_correcciones(self.carpeta)
         aprendidos = ejemplos.leer_aprendidos(self.carpeta)
         textos, etiquetas = ejemplos.unir(ejemplos.leer_ejemplos(ruta_ejemplos), correcciones,
                                           self.acciones, aprendidos)
+<<<<<<< HEAD
         try:
             metadatos = clasificador.entrenar(textos, etiquetas, self.carpeta_modelo,
                                               extra={"correcciones": len(correcciones),
@@ -163,6 +177,30 @@ class Router:
             if self.clasificador is None:   # se soltó para reemplazarlo (Windows) y falló: vuelve el viejo
                 self.clasificador = clasificador.cargar(self.carpeta_modelo)
             raise
+=======
+        # Una frase de prueba corregida con los botones se entrenaría: se saca de la medición.
+        prueba = evaluacion.leer_pruebas()
+        repetidas = set(evaluacion.solapadas(prueba, textos))
+        prueba = [(t, a) for t, a in prueba if t not in repetidas]
+        actual = self.clasificador
+        medida_actual = evaluacion.medir(actual.predecir, prueba, self.umbral_ejecutar) if actual and prueba else None
+
+        def control(nuevo: clasificador.Clasificador) -> tuple[str | None, dict]:
+            if not prueba:
+                return None, {}
+            medida = evaluacion.medir(nuevo.predecir, prueba, self.umbral_ejecutar)
+            datos = {"evaluacion": medida.como_dict()}
+            if medida_actual:
+                datos["evaluacion_anterior"] = medida_actual.como_dict()
+            return evaluacion.aceptable(medida, medida_actual), datos
+
+        opciones = {k: self.entrenamiento[k] for k in ("base", "iteraciones", "epocas", "congelar_vocabulario")
+                    if k in self.entrenamiento}
+        metadatos = clasificador.entrenar(textos, etiquetas, self.carpeta_modelo, **opciones,
+                                          extra={"correcciones": len(correcciones),
+                                                 "aprendidos": len(aprendidos)},
+                                          control=control)
+>>>>>>> origin/main
         self.clasificador = clasificador.cargar(self.carpeta_modelo)
         return metadatos
 

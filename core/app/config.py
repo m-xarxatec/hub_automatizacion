@@ -14,10 +14,8 @@ POR_DEFECTO: dict[str, Any] = {
         "diario": "Diario",
         "proyectos": "Proyectos",
         "interna": "_hub",
-        "subcarpetas": [
-            "Ideas", "Historia", "Historia/Personajes", "Produccion",
-            "Imagenes", "Referencias", "Analisis",
-        ],
+        # Carpeta de las fichas nuevas; si el proyecto ya tiene Historia/Personajes, se usa esa.
+        "personajes": "Personajes",
         "destino_por_tipo": {
             "idea": "Ideas", "general": "Ideas", "historia": "Historia",
             "dialogo": "Historia", "produccion": "Produccion", "analisis": "Analisis",
@@ -28,6 +26,10 @@ POR_DEFECTO: dict[str, Any] = {
         "acciones": ["nota", "tarea", "imagen", "referencia", "referencia_personaje",
                      "consulta", "analisis", "busqueda"],
         "segunda_opinion": True, "llm_timeout_s": 15,
+        "interprete": {"activo": True, "modelo": "openai/gpt-6-luna", "razonamiento": "low",
+                       "timeout_s": 20, "max_tokens": 400},
+        "entrenamiento": {"base": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+                          "iteraciones": 10, "epocas": 1, "congelar_vocabulario": True},
     },
     "proveedores": {
         "llm_local": {"activo": False, "modelo": "qwen2.5:3b-instruct-q4_K_M"},
@@ -35,6 +37,10 @@ POR_DEFECTO: dict[str, Any] = {
             {"modelo": "openai/gpt-6-luna", "razonamiento": "low"},
             {"modelo": "claude-cli/claude-haiku-4-5", "razonamiento": "off", "aislado": True},
         ],
+        # Redactor: decide qué escribir y dónde (acciones/redactor.py).
+        "redactor": {"activo": True, "modelo": "openai/gpt-6-sol", "razonamiento": "low",
+                     "timeout_s": 90, "max_tokens": 3000, "tope_contexto_tokens": 12000},
+        "consulta_notas_tokens": 6000,
         "analisis": {
             "recomendado": "claude-cli/claude-opus-5-5",
             "opciones": [{"modelo": "claude-cli/claude-opus-5-5", "nombre": "Opus 5.5", "aislado": True,
