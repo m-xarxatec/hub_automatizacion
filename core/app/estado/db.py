@@ -1,8 +1,9 @@
 """Estado operativo en SQLite (fuera de la bóveda).
 
 Solo guarda lo que no tiene sentido como nota: proyecto activo, sesión, las últimas
-vueltas de la consulta en curso, preferencias (modelo de análisis), gasto por proveedor,
-pausas de proveedores (cortacircuitos) y cola de reintentos.
+vueltas de la consulta en curso, preferencias (modelo de análisis), uso de los modelos
+(llamadas y tokens por día, función y modelo: /tokens y /estado), pausas de proveedores
+(cortacircuitos) y cola de reintentos.
 Nunca contenido de notas.
 Se puede borrar sin perder información real.
 """
@@ -13,8 +14,10 @@ import json
 import secrets
 import sqlite3
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS chat (
@@ -23,6 +26,19 @@ CREATE TABLE IF NOT EXISTS chat (
     sesion    TEXT,
     voz       TEXT
 );
+-- Uso de los modelos por día, función (interprete, redactor, consulta, analisis, router, imagen) y
+-- modelo. "estimadas": llamadas cuya salida se estimó por el largo del texto (Claude Code la informa mal).
+CREATE TABLE IF NOT EXISTS uso (
+    fecha      TEXT NOT NULL,
+    funcion    TEXT NOT NULL,
+    modelo     TEXT NOT NULL,
+    llamadas   INTEGER NOT NULL DEFAULT 0,
+    entrada    INTEGER NOT NULL DEFAULT 0,
+    salida     INTEGER NOT NULL DEFAULT 0,
+    estimadas  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (fecha, funcion, modelo)
+);
+-- Anterior a "uso" (2026-09-30): solo contaba llamadas. Se conserva para no romper bases viejas.
 CREATE TABLE IF NOT EXISTS gasto (
     fecha      TEXT NOT NULL,
     proveedor  TEXT NOT NULL,
@@ -130,19 +146,30 @@ class Estado:
                         (chat_id, clave, valor))
         self.cx.commit()
 
-    # --- gasto ---------------------------------------------------------------
-    def sumar_gasto(self, fecha: str, proveedor: str, usd: float = 0.0) -> None:
+    # --- uso de los modelos -----------------------------------------------------------
+    def sumar_uso(self, fecha: str, funcion: str, modelo: str, entrada: int = 0, salida: int = 0,
+                  estimada: bool = False) -> None:
         self.cx.execute(
-            "INSERT INTO gasto (fecha, proveedor, llamadas, usd) VALUES (?, ?, 1, ?) "
-            "ON CONFLICT(fecha, proveedor) DO UPDATE SET llamadas = llamadas + 1, usd = usd + ?",
-            (fecha, proveedor, usd, usd),
-        )
+            "INSERT INTO uso (fecha, funcion, modelo, llamadas, entrada, salida, estimadas) "
+            "VALUES (?, ?, ?, 1, ?, ?, ?) ON CONFLICT(fecha, funcion, modelo) DO UPDATE SET "
+            "llamadas = llamadas + 1, entrada = entrada + excluded.entrada, "
+            "salida = salida + excluded.salida, estimadas = estimadas + excluded.estimadas",
+            (fecha, funcion, modelo, int(entrada), int(salida), int(estimada)))
         self.cx.commit()
 
-    def gasto_del_dia(self, fecha: str) -> list[tuple[str, int, float]]:
+    def uso(self, desde: str | None = None, hasta: str | None = None,
+            por: tuple[str, ...] = ("funcion", "modelo")) -> list[tuple]:
+        """Filas (…agrupado por `por`, llamadas, entrada, salida, estimadas) entre dos fechas
+        (inclusive; None = sin límite), de más a menos tokens."""
+        columnas = ", ".join(c for c in por if c in ("fecha", "funcion", "modelo"))
         return self.cx.execute(
-            "SELECT proveedor, llamadas, usd FROM gasto WHERE fecha = ? ORDER BY proveedor", (fecha,)
-        ).fetchall()
+            f"SELECT {columnas}, SUM(llamadas), SUM(entrada), SUM(salida), SUM(estimadas) FROM uso "
+            "WHERE fecha >= COALESCE(?, fecha) AND fecha <= COALESCE(?, fecha) "
+            f"GROUP BY {columnas} ORDER BY SUM(entrada) + SUM(salida) DESC, SUM(llamadas) DESC",
+            (desde, hasta)).fetchall()
+
+    def primer_dia_de_uso(self) -> str | None:
+        return self.cx.execute("SELECT MIN(fecha) FROM uso").fetchone()[0]
 
     # --- pausas de proveedores ------------------------------------------------------
     def estado_proveedor(self, proveedor: str) -> tuple[int, float, str]:
@@ -170,3 +197,11 @@ class Estado:
 
     def pendientes(self) -> int:
         return self.cx.execute("SELECT COUNT(*) FROM cola").fetchone()[0]
+
+
+def contador_de_uso(estado: Estado, zona: str) -> Callable[[str, Any], None]:
+    """Para OpenClaw(contador=…): suma cada respuesta en la tabla `uso` con la fecha local."""
+    def contar(funcion: str, r: Any) -> None:
+        estado.sumar_uso(datetime.now(ZoneInfo(zona)).date().isoformat(), funcion, r.modelo,
+                         r.tokens_entrada, r.tokens_salida, r.salida_estimada)
+    return contar

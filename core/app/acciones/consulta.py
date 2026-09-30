@@ -13,8 +13,6 @@ hasta proveedores.consulta_notas_tokens): "¿y la historia?" se responde con lo 
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from ..boveda.proyectos import Boveda
 from ..estado.db import Estado
@@ -61,8 +59,7 @@ def notas_del_proyecto(boveda: Boveda, proyecto: str | None, pregunta: str, tope
 
 
 async def responder(cliente: OpenClaw, estado: Estado, chat_id: int, pregunta: str,
-                    zona: str = "Europe/Madrid", breve: bool = False, notas: str = "",
-                    proyecto: str | None = None) -> str:
+                    breve: bool = False, notas: str = "", proyecto: str | None = None) -> str:
     """Respuesta para el usuario (o el aviso de que no se pudo). `breve`: para leerla en voz alta.
     `notas`: las del proyecto activo (notas_del_proyecto)."""
     sesion = estado.sesion(chat_id)
@@ -75,7 +72,6 @@ async def responder(cliente: OpenClaw, estado: Estado, chat_id: int, pregunta: s
     if r is None:
         return SIN_RESPUESTA
     estado.agregar_vuelta(sesion, pregunta, r.texto, guardar=MENSAJES_HISTORIAL)
-    estado.sumar_gasto(datetime.now(ZoneInfo(zona)).date().isoformat(), r.modelo)
     texto = r.texto
     if len(texto) > MAX_CARACTERES:
         texto = texto[:MAX_CARACTERES].rstrip() + "…"

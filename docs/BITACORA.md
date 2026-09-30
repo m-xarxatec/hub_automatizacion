@@ -2136,6 +2136,129 @@ ideas, pero al descartar el plan entero perdía el orden, que era el objetivo. L
 aplica lo organizado y guarda el original a un lado, plegado. Medir con datos reales (los registros de cobertura)
 mostró el problema sin adivinar.
 
+## 2026-09-30 — `/tokens` y `/estado` nuevo: registro de uso de cada modelo
+
+Pedido del usuario (punto 2 del plan): una función `/tokens` con los tokens gastados hasta el momento y un `/estado`
+más completo. Antes solo se contaban las llamadas de la consulta y del análisis (tabla `gasto`), sin tokens; el
+intérprete, el redactor, el router y las imágenes no se registraban.
+
+**Qué se hizo**
+- **Registro central:** todas las llamadas a modelos pasan por `OpenClaw._pedir`; cada respuesta se entrega a un
+  `contador(funcion, respuesta)` que la suma en SQLite (tabla nueva `uso`: fecha, función, modelo, llamadas,
+  entrada, salida, estimadas). Cada cliente tiene su función (`consulta`, `router`, `interprete`, `redactor`) y
+  el análisis marca la suya en la llamada (usa el cliente de la consulta). Las imágenes se cuentan sin tokens.
+- **Salida estimada:** Claude por Claude Code informó "2 tokens de salida" en un análisis largo. Si lo informado es
+  menos de un cuarto de lo que mide el texto (3,5 caracteres por token), se registra la estimación y se marca con
+  `~`; `/tokens` explica que además su entrada no incluye el prompt propio del programa (~3.700).
+- **`/tokens`** (y "cuántos tokens llevo", "tokens de hoy"… como orden fija, sin tokens): hoy por función y modelo,
+  con entrada y salida; desde el primer día registrado, por modelo; notas de las estimaciones y de lo que no gasta
+  (voz local, comandos, órdenes fijas). Por voz, una frase ("Hoy llevas 3 mil tokens en 4 llamadas…").
+- **`/estado`:** intérprete y redactor con modelo y razonamiento, respaldo local (reglas + SetFit), cadena de la
+  consulta, OpenClaw, voz, imágenes (lista, falta configurar o "en pausa hasta las HH:MM tras N fallos") y "Uso de
+  hoy". Salen la cola (no se usa, decisión 5) y la web "fase 2". Por voz: "El servidor X está activo. Todo
+  responde." o "Ojo: …" con lo que falla, y los tokens de hoy.
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/acciones/uso.py` | Nuevo: texto y voz de `/tokens`, línea de uso de `/estado`, números legibles |
+| `core/app/proveedores/openclaw.py` | `funcion` y `contador` por cliente o por llamada; `Respuesta.salida_estimada` |
+| `core/app/estado/db.py` | Tabla `uso`, `sumar_uso`, `uso(desde, hasta, por)`, `primer_dia_de_uso`, `contador_de_uso`; sale `sumar_gasto` |
+| `core/app/entradas/telegram_bot.py` | `/estado` nuevo, `estado_imagenes`, `/tokens`, registro de imágenes, `_modelo`, `_cuantos` |
+| `core/app/main.py` | Conecta el contador a los cuatro clientes de OpenClaw |
+| `core/app/acciones/analisis.py`, `core/app/acciones/consulta.py` | El análisis marca su función; la consulta ya no suma aparte |
+| `core/app/router/reglas.py` | Orden fija `tokens` |
+| `core/tests/test_uso.py`, `core/tests/test_estado.py` | 14 pruebas nuevas; la del gasto pasa a la de `uso` |
+
+**Decisiones y por qué**
+- **Contar en el cliente y no en cada acción:** es el único lugar por donde pasan todas las llamadas; así no se
+  olvida ninguna función nueva. El contador nunca rompe una respuesta: si falla, se registra en el log y sigue.
+- **Tabla nueva `uso`** en vez de cambiar `gasto`: SQLite no agrega columnas a una clave primaria; `gasto` queda
+  por compatibilidad con bases existentes (decisión 1: es estado operativo, no contenido).
+- **Estimar solo lo absurdo:** los tokens informados por GPT son buenos (incluyen el razonamiento); solo se corrige
+  cuando el número es imposible, y se marca para no presentar una estimación como dato.
+- **Sin "panel de ahorro":** está fuera de alcance; `/tokens` muestra lo gastado, no porcentajes de ahorro.
+
+**Problemas encontrados**
+- La prueba de uso por modelo esperaba el orden equivocado (el que más tokens suma va primero): se corrigió la
+  prueba. En la prueba real, `/estado` decía "razonamiento sin razonamiento" para Haiku y "de 1 proyectos": se
+  corrigió la redacción (`_modelo`, `_cuantos`).
+
+**Resultado de las pruebas:** 329 pasan (1 omitida) en `.venv` y en la imagen reconstruida. Real (bot completo con
+modelos reales y contador como en `main.py`): proyecto nuevo, audio de Deacon (ficha creada), consulta, `/estado`
+(todo responde; "Uso de hoy: 4 llamadas, 3.249 tokens"), "estado" por voz, `/tokens` (intérprete 1.865, redactor
+1.161, consulta 223) y "cuántos tokens llevo" por voz resuelto sin tokens.
+
+**Cómo probarlo:** recrear `core`, usar el bot un rato y mandar `/tokens`, "cuántos tokens llevo" (texto o voz) y
+`/estado`. El registro empieza al recrear `core`: lo anterior no se cuenta.
+
+**Qué aprendiste: medir en el único punto de paso.** Si cada función registrara su propio uso, bastaría olvidar una
+para que los números mientan. Contar donde pasan todas las llamadas (el cliente) hace el registro completo por
+construcción, y marcar lo estimado evita confundir una aproximación con un dato.
+
+## 2026-09-30 — Conflictos de Syncthing: aviso, sugerencia y resolución con botones; latido por servidor
+
+El usuario preguntó cómo resuelve Syncthing los conflictos. Al revisar apareció uno real en la bóveda
+(`_hub/servidor.sync-conflict-20260930-021810-YEYNFXT.json`: la laptop escribió su latido sin conexión y al
+reconectarse chocó con el de la PC) y un error en la guía: decía que el bot "crea siempre archivos nuevos", pero
+desde el 2026-09-27 agrega a archivos existentes (`Historia.md`, fichas, `tareas.md`, el diario). Pedido: borrar
+esa copia, evitar el conflicto del latido si no rompe nada, corregir la guía y, como prioridad, que el bot detecte
+los conflictos, sugiera cómo resolverlos y pueda hacerlo.
+
+**Qué se hizo**
+- Copia de conflicto del latido revisada y borrada (el borrado se propagó a los 4 equipos).
+- **Conflictos** (`boveda/conflictos.py`): cada 60 s (`boveda.revisar_conflictos_s`) se buscan copias
+  `*.sync-conflict-*` (sin `.stversions`, `.stfolder`, `.trash`); se avisa solo de las que siguen en la revisión
+  siguiente (Syncthing puede estar copiándolas) y una sola vez. El aviso por Telegram dice qué líneas tiene solo
+  cada versión, una sugerencia con su motivo y botones: **Unir** (lo de la copia se inserta en su lugar en la
+  actual; si un fragmento cambió en las dos quedan ambas, primero la copia, que es la más vieja), **Quedarme con la
+  actual**, **Usar la copia** (o restaurar un original borrado) y **Después**. Antes de tocar nada, las dos versiones
+  se copian a `datos/conflictos/<fecha-hora>/`. `/conflictos` (y "hay conflictos", por texto o voz) los lista. Las
+  copias del latido se borran solas. Los archivos que no son `.md`/`.txt` no se unen (un JSON quedaría roto).
+- **Latido por servidor** (`estado/latido.py`): cada equipo escribe `_hub/servidor-<nombre>.json`; el arranque lee
+  todos, incluido el `servidor.json` anterior, e ignora copias de conflicto y archivos rotos.
+- **Documentación:** sección "Conflictos" de `GUIA.md` reescrita (cómo decide Syncthing, dónde puede pasar aquí, qué
+  hace el bot), latido en `GUIA.md` y `README.md`, y tabla de comandos del README (`/diario`, `/tokens`,
+  `/conflictos`, proyectos sin esqueleto, redactor).
+
+**Archivos**
+
+| Archivo | Qué hace |
+| --- | --- |
+| `core/app/boveda/conflictos.py` | Nuevo: buscar, analizar, unir (difflib), resolver con respaldo, `Vigilante` |
+| `core/app/entradas/telegram_bot.py` | `mensaje_conflicto`, `revisar_conflictos`, `vigilar_conflictos`, `/conflictos`, botones `cf:` |
+| `core/app/estado/latido.py` | Un archivo por servidor; `leer_todos`; `leer` = el más reciente |
+| `core/app/main.py`, `core/app/config.py`, `config.yaml` | Tarea de vigilancia; `boveda.revisar_conflictos_s` |
+| `core/app/router/reglas.py` | Orden fija `conflictos` |
+| `core/tests/test_conflictos.py`, `core/tests/test_estado.py` | 14 pruebas nuevas |
+| `GUIA.md`, `README.md` | Conflictos, latido y comandos |
+
+**Decisiones y por qué**
+- **Siempre con botones y respaldo:** resolver un conflicto es reescribir o borrar lo del usuario (decisión 6); se
+  hace solo si él elige y con las dos versiones guardadas fuera de la bóveda. La excepción es el latido, que es del bot.
+- **Unir por líneas sin versión común:** Syncthing no guarda el ancestro, así que donde las dos cambiaron no se sabe
+  cuál es la buena: se conservan ambas en orden cronológico y se avisa. Lo típico aquí (el bot agrega un bloque y el
+  usuario edita otra parte) se une limpio.
+- **Latido compatible:** el código nuevo lee también el archivo viejo; si un equipo aún tiene el código viejo, el
+  error 409 de Telegram sigue impidiendo dos servidores a la vez. Conviene actualizar los dos equipos.
+
+**Problemas encontrados**
+- Dos pruebas esperaban la variante actual antes que la de la copia; se decidió el orden cronológico (la copia es
+  la más vieja) y se ajustó el código y la prueba.
+- Una prueba de uso esperaba mal el orden por tokens (tarea anterior): corregida.
+
+**Resultado de las pruebas:** 343 pasan (1 omitida) en `.venv` y en la imagen reconstruida. Real (solo lectura sobre
+la bóveda): con el latido viejo de la PC, el código nuevo deja arrancar a `pc-casa` y bloquea a `laptop`.
+
+**Cómo probarlo:** recrear `core`. Con el móvil en modo avión, editar `Historia.md` de un proyecto en Obsidian; desde
+Telegram, mandar una nota que el redactor agregue a ese mismo archivo; quitar el modo avión. En uno o dos minutos
+llega el aviso con la sugerencia; probar "Unir" y revisar en Obsidian y en `datos/conflictos/`.
+
+**Qué aprendiste: sin ancestro común no hay fusión perfecta.** Git une bien porque conoce la versión de la que
+partieron los dos cambios; Syncthing solo tiene las dos versiones finales. Sin esa base, donde ambas difieren no se
+puede saber cuál cambió: lo honesto es conservar las dos y avisar, y dejar que el usuario decida con un respaldo.
+
 ## 2026-09-29 — `/reentrenar` en Windows: soltar el modelo antes de reemplazarlo
 
 **Qué se hizo**

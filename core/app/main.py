@@ -15,7 +15,7 @@ from .boveda.proyectos import Boveda
 from .entradas import telegram_bot
 from .entradas.web import servidor as web
 from .estado import latido, limpieza
-from .estado.db import Estado
+from .estado.db import Estado, contador_de_uso
 from .acciones.imagenes import GeneradorImagenes
 from .proveedores.cadena import crear_cadena
 from .proveedores.ollama import Ollama
@@ -76,17 +76,20 @@ async def principal() -> int:
 
     (ajustes.datos / "tmp").mkdir(parents=True, exist_ok=True)
     estado = Estado(ajustes.datos / "hub.sqlite3")
+    contar = contador_de_uso(estado, ajustes.zona)   # tokens de cada llamada a un modelo (/tokens)
     cfg_router = cfg["router"]
     cfg_llm = cfg["proveedores"]["llm_local"]
     llm_activo = bool(cfg_llm.get("activo", True))
     openclaw = (OpenClaw(ajustes.openclaw_url, ajustes.openclaw_token,
-                         cadena_desde_config(cfg["proveedores"].get("consulta")))
+                         cadena_desde_config(cfg["proveedores"].get("consulta")),
+                         funcion="consulta", contador=contar)   # los análisis se marcan en analisis.py
                 if ajustes.openclaw_token else None)
     # Si el router duda: ChatGPT → Haiku (OpenClaw); sin OpenClaw, qwen local si está activo.
     # Con un tope corto (llm_timeout_s): si tarda, mejor los botones que esperar.
     if openclaw:
         llm = OpinionIA(OpenClaw(openclaw.url, openclaw.token, openclaw.cadena,
-                                 timeout=float(cfg_router.get("llm_timeout_s", 15))),
+                                 timeout=float(cfg_router.get("llm_timeout_s", 15)),
+                                 funcion="router", contador=contar),
                         list(cfg_router.get("acciones", [])))
     elif llm_activo:
         llm = LLMLocal(Ollama(ajustes.ollama_url, cfg_llm["modelo"],
@@ -102,12 +105,14 @@ async def principal() -> int:
     cadena_int = ((Nivel(str(cfg_int["modelo"]), str(cfg_int.get("razonamiento", "low"))),)
                   if cfg_int.get("modelo") else openclaw.cadena if openclaw else ())
     interprete = (Interprete(OpenClaw(openclaw.url, openclaw.token, cadena_int,
-                                      timeout=float(cfg_int.get("timeout_s", 20))),
+                                      timeout=float(cfg_int.get("timeout_s", 20)),
+                                      funcion="interprete", contador=contar),
                              max_tokens=int(cfg_int.get("max_tokens", 400)))
                   if openclaw and cfg_int.get("activo", True) else None)
     # Redactor (2026-09-30): decide qué escribir y dónde con el contenido real del proyecto.
     cfg_red = cfg["proveedores"].get("redactor") or {}
-    redactor = (Redactor(OpenClaw(openclaw.url, openclaw.token, openclaw.cadena),
+    redactor = (Redactor(OpenClaw(openclaw.url, openclaw.token, openclaw.cadena,
+                                  funcion="redactor", contador=contar),
                          Nivel(str(cfg_red["modelo"]), str(cfg_red.get("razonamiento", "low"))),
                          max_tokens=int(cfg_red.get("max_tokens", 3000)),
                          tope_contexto_tokens=int(cfg_red.get("tope_contexto_tokens", 12000)),
@@ -132,6 +137,9 @@ async def principal() -> int:
         asyncio.create_task(limpieza.bucle(ajustes.datos, boveda.raiz, cfg["limpieza"], ajustes.zona)),
         asyncio.create_task(web_srv.serve()),
     ]
+    revisar_s = int(cfg["boveda"].get("revisar_conflictos_s", 60) or 0)
+    if revisar_s > 0:   # conflictos de Syncthing: aviso por Telegram con sugerencia y botones
+        tareas.append(asyncio.create_task(telegram_bot.vigilar_conflictos(bot, ctx, revisar_s)))
     if ollama_prompts:
         tareas.append(asyncio.create_task(ollama_prompts.precargar()))
     log.info("Hub activo en '%s'. Bóveda: %s. Router: %s", ajustes.servidor_nombre,

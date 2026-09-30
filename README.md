@@ -202,28 +202,33 @@ Si Windows bloquea el script: `powershell -ExecutionPolicy Bypass -File .\hub.ps
 2. Esperar a que Syncthing marque la carpeta como *Actualizada* en la laptop.
 3. En la laptop: `.\hub.ps1 arrancar`.
 
-Si se olvida el paso 1, la laptop no arranca: el latido de `_hub/servidor.json` o el
-error 409 de Telegram lo impiden, y Docker reintenta solo hasta que la PC se detenga.
+Si se olvida el paso 1, la laptop no arranca: el latido de la PC (`_hub/servidor-pc-casa.json`)
+o el error 409 de Telegram lo impiden, y Docker reintenta solo hasta que la PC se detenga.
+Conviene que los dos equipos tengan la misma versión del código: hasta el 2026-09-30 el latido
+era un único `_hub/servidor.json` (el código nuevo lo sigue leyendo).
 
 ### Comandos del bot
 
 | Comando | Qué hace |
 | --- | --- |
 | `/proyecto` | Ver y elegir el proyecto activo con botones |
-| `/proyecto nuevo <nombre>` | Crear proyecto con todas sus carpetas |
+| `/proyecto nuevo <nombre>` | Crear proyecto (solo su carpeta y `_proyecto.md`; el bot pregunta qué va dentro) |
 | `/proyecto ninguno` | Guardar todo en `00-Bandeja` |
-| `/nota [tipo:] <texto>` | Nota; tipos: `idea`, `historia`, `produccion`, `dialogo` |
+| `/nota [tipo:] <texto>` | Nota; el redactor elige archivo y sección (sin GPT, por tipo: `idea`, `historia`, `produccion`, `dialogo`) |
 | `/tarea <texto>` · `/tareas` | Agregar y ver pendientes del proyecto |
+| `/diario <texto>` | Anotar en el diario de hoy (`Diario/AAAA-MM-DD.md`) |
 | `/consulta <pregunta>` | Respuesta de ChatGPT mini (o Claude Haiku si falla), con historial corto |
 | `/analisis <pedido>` | Análisis a fondo de las notas del proyecto: muestra notas y tokens estimados, eliges el modelo y luego su esfuerzo con botones; resultado en `Analisis/` |
 | `/modelo` | Elegir el modelo de análisis predeterminado (Opus 5.5, Sonnet 5 o GPT-6 Sol) |
 | `/img <idea>` | Imagen de referencia: `.jpg` + nota hermana en `Imagenes/` del proyecto |
 | `/diagnostico` | Revisa cada proveedor de imágenes sin generar nada (no gasta cuota) |
-| `/estado` | Servidor, proyecto, router, Ollama, OpenClaw, cola |
+| `/estado` | Servidor, modelos de cada función, OpenClaw, voz, imágenes (y si están en pausa) y uso de hoy |
+| `/tokens` | Tokens gastados hoy y en total, por función y modelo |
+| `/conflictos` | Conflictos de Syncthing: qué tiene cada versión, unirlas o elegir una (con respaldo) |
 | `/nuevo` | Reiniciar el contexto de conversación |
 | `/limpiar` · `/limpiar simular` | Borrar temporales o ver qué borraría |
 | `/reentrenar` | Entrenar el router con los ejemplos y tus correcciones (unos 3 min) |
-| Texto libre | El router decide; si duda, pregunta con botones y aprende de lo que elijas |
+| Texto libre o voz | Lo concreto ("tarea: …", "dime mis tareas", "cuántos tokens llevo", "hay conflictos") se resuelve en local; lo demás lo entiende ChatGPT y lo organiza el redactor; sin GPT, el router local con botones |
 | Imagen con pie | Referencia del proyecto, o del personaje si el pie lo nombra |
 
 ---

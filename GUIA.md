@@ -349,9 +349,37 @@ abiertas en cada equipo) y los temporales `*.tmp`. Syncthing **no sincroniza** e
 
 ### Conflictos
 
-Si editas el mismo archivo en dos equipos antes de que se sincronicen, Syncthing guarda
-las dos versiones y renombra una como `…sync-conflict….md`. El hub evita esto creando
-siempre archivos nuevos con nombre único, en lugar de editar los existentes.
+**Cómo decide Syncthing.** No mezcla contenidos: trabaja con archivos enteros. Hay conflicto cuando
+el mismo archivo cambió en **dos equipos** antes de sincronizarse (por ejemplo, editas `Historia.md`
+en el móvil sin conexión mientras el bot le agrega algo en la PC). Entonces:
+
+- la versión modificada **más recientemente** conserva el nombre;
+- la otra no se borra: se renombra a `Historia.sync-conflict-AAAAMMDD-HHMMSS-EQUIPO.md` y viaja a
+  todos los equipos como un archivo más, porque Syncthing no sabe cuál prefieres;
+- si un equipo borra y otro modifica, gana la modificación (el archivo reaparece).
+
+Si solo un equipo cambió el archivo no hay conflicto: la versión nueva reemplaza a la vieja (y, con
+el versionado activado, la vieja queda en `.stversions/`).
+
+**Dónde puede pasar en este proyecto.** El bot agrega a archivos que ya existen (`Historia.md`, las
+fichas, `tareas.md`, el diario). Para evitarlos: antes de editar en un equipo, espera a que Syncthing
+diga "Actualizado" (en Android tarda 1-2 min) y no edites el mismo archivo en dos equipos sin conexión.
+
+**Qué hace el bot** (`core/app/boveda/conflictos.py`). Cada minuto busca copias de conflicto y te avisa
+por Telegram con lo que solo tiene cada versión, una sugerencia y botones:
+
+| Botón | Qué hace |
+| --- | --- |
+| Unir | Agrega al archivo actual, en su lugar, las líneas que solo estaban en la copia y borra la copia. Si un mismo fragmento cambió en las dos, quedan ambas variantes (primero la de la copia, que es la más vieja) |
+| Quedarme con la actual | Borra la copia (lo sugiere si la copia no tiene nada nuevo) |
+| Usar la copia | La copia reemplaza a la actual (o la restaura si se había borrado) |
+| Después | No toca nada; `/conflictos` lo vuelve a mostrar |
+
+Antes de tocar nada guarda las dos versiones en `datos/conflictos/<fecha-hora>/` (fuera de la bóveda):
+cualquier decisión se puede deshacer. Solo avisa de copias que siguen ahí en la revisión siguiente (una
+recién creada puede estar a medio copiar) y las copias del latido, que escribe el bot, las borra solo.
+Para resolver a mano: busca "sync-conflict" en Obsidian, pasa al archivo principal lo que falte y borra
+la copia en un equipo (el borrado se propaga).
 
 ---
 
@@ -564,10 +592,12 @@ elimina `\ / : * ? " < > |`. Motivos: Windows prohíbe esos caracteres (Syncthin
 podría copiar el archivo a la laptop), Windows no distingue `Idea.md` de `idea.md`
 (chocarían) y los acentos pueden codificarse de dos formas distintas según el sistema.
 
-**El latido.** Cada 60 segundos, `core` escribe `_hub/servidor.json` con su nombre y la
-hora. Como está en la bóveda, Syncthing lo copia a los demás equipos. Al arrancar, `core`
-lo lee: si otro equipo escribió hace menos de 3 minutos, se detiene. Es un segundo
-candado, además del error 409 de Telegram, para no tener dos servidores activos.
+**El latido.** Cada 60 segundos, `core` escribe `_hub/servidor-<equipo>.json` con su nombre y
+la hora. Como está en la bóveda, Syncthing lo copia a los demás equipos. Al arrancar, `core`
+los lee todos: si otro equipo escribió hace menos de 3 minutos, se detiene. Es un segundo
+candado, además del error 409 de Telegram, para no tener dos servidores activos. Cada equipo
+tiene su propio archivo porque, con uno compartido, si un equipo escribía sin conexión
+Syncthing creaba copias de conflicto (antes del 2026-09-30 era `_hub/servidor.json`).
 
 ---
 

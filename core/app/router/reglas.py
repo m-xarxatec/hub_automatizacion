@@ -155,6 +155,16 @@ _ORDENES: list[tuple[str, re.Pattern]] = [
         rf"^(?:(?:cambia(?:r)?|elige|elegir|ver|cu[aá]l{_SEP}es)(?:{_SEP}(?:el|de))?{_SEP})?modelo"
         rf"(?:{_SEP}de{_SEP}an[aá]lisis)?$", re.I)),
     ("ayuda", re.compile(rf"^(?:ayuda|comandos|qu[eé]{_SEP}puedes{_SEP}hacer)$", re.I)),
+    # /conflictos: "hay conflictos", "muéstrame los conflictos de Syncthing".
+    ("conflictos", re.compile(
+        rf"^(?:(?:ver|mu[eé]strame|muestra|revisa|dime)(?:{_SEP}(?:los|mis))?{_SEP})?conflictos"
+        rf"(?:{_SEP}de{_SEP}syncthing)?$|^hay{_SEP}conflictos(?:{_SEP}de{_SEP}syncthing)?$", re.I)),
+    # /tokens: "cuántos tokens llevo", "tokens de hoy", "muéstrame los tokens gastados".
+    ("tokens", re.compile(
+        rf"^(?:(?:ver|dame|dime|mu[eé]strame|muestra){_SEP})?(?:(?:los|mis){_SEP})?tokens"
+        rf"(?:{_SEP}(?:gastados|usados|de{_SEP}hoy|que{_SEP}llevo|que{_SEP}llevamos))?$"
+        rf"|^cu[aá]ntos{_SEP}tokens{_SEP}(?:llevo|llevamos|he{_SEP}gastado|hemos{_SEP}gastado|van|gast[eé]|usamos)"
+        rf"(?:{_SEP}hoy)?$", re.I)),
     ("nuevo", re.compile(
         rf"^(?:nueva{_SEP}conversaci[oó]n|empecemos{_SEP}de{_SEP}(?:nuevo|cero)|"
         rf"olvida{_SEP}(?:la{_SEP})?conversaci[oó]n(?:{_SEP}anterior)?)$", re.I)),
