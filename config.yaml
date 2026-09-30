@@ -12,6 +12,9 @@ boveda:
   # (proveedores.redactor); el esquema por tipo de abajo queda de respaldo si GPT no responde.
   # Fichas nuevas de personaje (si el proyecto ya tiene Historia/Personajes, se usa esa):
   personajes: Personajes
+  # Cada cuántos segundos se buscan conflictos de Syncthing (*.sync-conflict-*) para avisar por Telegram
+  # con una sugerencia y botones (unir, quedarse con la actual, usar la copia). 0 = no revisar.
+  revisar_conflictos_s: 60
   # Respaldo sin GPT: tipo de nota -> archivo del proyecto (Ideas.md, Historia.md…)
   destino_por_tipo:
     idea: Ideas

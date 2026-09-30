@@ -16,6 +16,7 @@ POR_DEFECTO: dict[str, Any] = {
         "interna": "_hub",
         # Carpeta de las fichas nuevas; si el proyecto ya tiene Historia/Personajes, se usa esa.
         "personajes": "Personajes",
+        "revisar_conflictos_s": 60,
         "destino_por_tipo": {
             "idea": "Ideas", "general": "Ideas", "historia": "Historia",
             "dialogo": "Historia", "produccion": "Produccion", "analisis": "Analisis",

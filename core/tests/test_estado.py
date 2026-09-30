@@ -13,6 +13,26 @@ def test_latido_detecta_otro_equipo(tmp_path):
     assert latido.conflicto(tmp_path, "laptop", 180, ahora + 600) is None
 
 
+def test_cada_equipo_late_en_su_archivo_y_se_leen_todos(tmp_path):
+    """Un archivo por equipo: nadie escribe en el del otro, así Syncthing no crea copias de conflicto."""
+    import json
+    ahora = time.time()
+    latido.escribir(tmp_path, "pc-casa", ahora)
+    latido.escribir(tmp_path, "laptop", ahora - 500)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["servidor-laptop.json", "servidor-pc-casa.json"]
+    assert latido.leer(tmp_path)["servidor"] == "pc-casa"                     # el más reciente
+    assert "pc-casa" in latido.conflicto(tmp_path, "laptop", 180, ahora + 10)
+    assert latido.conflicto(tmp_path, "pc-casa", 180, ahora + 10) is None      # el de la laptop es viejo
+    # El archivo anterior (código viejo en el otro equipo) también cuenta; las copias de conflicto, no.
+    (tmp_path / "servidor.json").write_text(json.dumps({"servidor": "laptop", "epoch": ahora}), encoding="utf-8")
+    (tmp_path / "servidor.sync-conflict-20260930-021810-YEYNFXT.json").write_text(
+        json.dumps({"servidor": "tablet", "epoch": ahora}), encoding="utf-8")
+    assert "laptop" in latido.conflicto(tmp_path, "pc-casa", 180, ahora + 10)
+    assert latido.conflicto(tmp_path, "laptop", 180, ahora + 10).startswith("El equipo 'pc-casa'")
+    (tmp_path / "servidor-roto.json").write_text("{no es json", encoding="utf-8")
+    assert len(latido.leer_todos(tmp_path)) == 3                              # el roto se ignora
+
+
 def test_limpieza_por_antiguedad(tmp_path):
     datos, boveda = tmp_path / "datos", tmp_path / "Boveda"
     viejo = datos / "tmp" / "conversion.wav"
@@ -40,9 +60,23 @@ def test_estado_sqlite(tmp_path):
     assert e.proyecto_activo(1) == "Webtoon"
     s1 = e.sesion(1)
     assert e.nueva_sesion(1) != s1
-    e.sumar_gasto("2026-09-25", "cloudflare")
-    e.sumar_gasto("2026-09-25", "cloudflare")
-    assert e.gasto_del_dia("2026-09-25") == [("cloudflare", 2, 0.0)]
+
+
+
+def test_uso_de_modelos_por_dia_funcion_y_modelo(tmp_path):
+    e = Estado(tmp_path / "hub.sqlite3")
+    assert e.primer_dia_de_uso() is None and e.uso() == []
+    e.sumar_uso("2026-09-29", "interprete", "gpt-6-sol", 700, 70)
+    e.sumar_uso("2026-09-30", "interprete", "gpt-6-sol", 650, 60)
+    e.sumar_uso("2026-09-30", "interprete", "gpt-6-sol", 600, 50)
+    e.sumar_uso("2026-09-30", "analisis", "claude-opus-5-5", 540, 900, estimada=True)
+    e.sumar_uso("2026-09-30", "imagen", "gpt-image-2")
+    assert e.primer_dia_de_uso() == "2026-09-29"
+    # De más a menos tokens; las imágenes (sin tokens) al final.
+    assert e.uso("2026-09-30", "2026-09-30") == [
+        ("analisis", "claude-opus-5-5", 1, 540, 900, 1), ("interprete", "gpt-6-sol", 2, 1250, 110, 0),
+        ("imagen", "gpt-image-2", 1, 0, 0, 0)]
+    assert e.uso(por=("modelo",))[0] == ("gpt-6-sol", 3, 1950, 180, 0)       # sin límite de fechas
 
 
 def test_historial_de_consulta(tmp_path):

@@ -35,11 +35,11 @@ from aiogram.types import (BotCommand, BufferedInputFile, CallbackQuery, InlineK
 
 from ..acciones import analisis
 from ..acciones import consulta as consultas
-from ..acciones import notas, personajes, referencias
+from ..acciones import notas, personajes, referencias, uso
 from ..acciones import redactor as redaccion
 from ..acciones.imagenes import GeneradorImagenes
 from ..ajustes import Ajustes
-from ..boveda import escritor
+from ..boveda import conflictos, escritor
 from ..boveda.proyectos import Boveda
 from ..estado import limpieza
 from ..estado.db import Estado
@@ -90,14 +90,16 @@ AYUDA = """Comandos disponibles:
 /modelo  elegir el modelo de análisis predeterminado
 /img <idea>  generar una imagen de referencia
 /diagnostico  revisar los proveedores de imágenes
-/estado  servidor, proyecto, servicios
+/estado  servidor, modelos, servicios, imágenes y uso de hoy
+/tokens  tokens gastados hoy y en total, por función y modelo
+/conflictos  conflictos de Syncthing: qué tiene cada versión, unirlas o elegir una
 /nuevo  empezar una conversación nueva (olvida las consultas anteriores)
 /limpiar  borrar temporales (/limpiar simular para ver qué borraría)
 /reentrenar  entrenar el router con tus correcciones y lo que decidió la IA
 
 Sin comando, escribe o habla normal. Lo concreto lo resuelvo al instante:
 "tarea: comprar tinta", "dime mis tareas", "anota en mi diario que…", "cambia al proyecto X",
-"estado", "diagnóstico", "limpia los temporales", "ayuda".
+"estado", "cuántos tokens llevo", "hay conflictos", "diagnóstico", "limpia los temporales", "ayuda".
 Lo demás lo entiende ChatGPT y lo organiza en tu bóveda: elige el archivo y la sección, reparte un
 mensaje entre la historia y las fichas, enlaza a los personajes y te avisa si algo contradice lo
 escrito. Solo crea archivos, carpetas o fichas cuando hay algo que poner en ellos:
@@ -124,6 +126,8 @@ COMANDOS = [
     ("img", "Generar una imagen de referencia"),
     ("diagnostico", "Revisar proveedores de imágenes"),
     ("estado", "Estado del servidor"),
+    ("tokens", "Tokens gastados"),
+    ("conflictos", "Conflictos de Syncthing"),
     ("nuevo", "Reiniciar contexto"),
     ("limpiar", "Borrar temporales"),
     ("reentrenar", "Entrenar el router"),
@@ -143,6 +147,7 @@ class Contexto:
     openclaw: OpenClaw | None = None
     interprete: Interprete | None = None
     redactor: redaccion.Redactor | None = None
+    vigilante: conflictos.Vigilante | None = None   # conflictos de Syncthing ya vistos y avisados
     inicio: float = field(default_factory=time.time)
     pendientes: dict[str, dict[str, Any]] = field(default_factory=dict)
     # chat -> clave del pendiente de un personaje al que le falta el nombre
@@ -472,6 +477,8 @@ def crear_router(ctx: Contexto) -> Router:
         await estado(m)
 
     async def estado(m: Message) -> None:
+        """Servidor, modelos de cada función, servicios, imágenes (pausas del cortacircuitos) y uso
+        de hoy. Por voz, una frase: si todo responde o qué falla, y los tokens de hoy."""
         a = ctx.ajustes
         cfg_llm = ctx.config.get("proveedores", {}).get("llm_local", {})
         voz = ctx.voz.estado() if ctx.voz else _constante("no configurada")
@@ -480,19 +487,109 @@ def crear_router(ctx: Contexto) -> Router:
         ollama, openclaw, voz = await asyncio.gather(
             ollama, _estado_openclaw(a.openclaw_url, a.openclaw_token), voz)
         minutos = int((time.time() - ctx.inicio) / 60)
+        imagenes, problemas_img = estado_imagenes()
+        respaldo = "reglas + SetFit" if getattr(ctx.router, "clasificador", None) else "reglas (SetFit sin entrenar)"
+        consulta = " → ".join(_modelo(n) for n in ctx.openclaw.cadena) if ctx.openclaw else "sin OpenClaw"
         lineas = [
             f"Servidor: {a.servidor_nombre} (activo hace {minutos} min)",
-            f"Proyecto activo: {destino(m.chat.id)}",
-            f"Proyectos: {len(ctx.boveda.listar_proyectos())}",
-            f"Intérprete: {'ChatGPT (' + ctx.interprete.cliente.cadena[0].modelo + '), respaldo local' if ctx.interprete else 'apagado: decide el router local'}",
-            f"Router: {ctx.router.motor}",
-            f"Ollama: {ollama}",
+            f"Proyecto activo: {destino(m.chat.id)} ({_cuantos(len(ctx.boveda.listar_proyectos()), 'proyecto')} "
+            "en total)",
+            f"Intérprete: {_modelo(ctx.interprete.cliente.cadena[0]) if ctx.interprete else 'apagado'}; "
+            f"respaldo local: {respaldo}",
+            f"Redactor: {_modelo(ctx.redactor.nivel) if ctx.redactor else 'apagado: notas por tipo'}",
+            f"Consulta: {consulta}",
             f"OpenClaw: {openclaw}",
             f"Voz: {voz}",
-            f"Pendientes en cola: {ctx.estado.pendientes()}",
-            f"Web local: http://{a.lan_ip}:{a.web_port} (pantallas en fase 2)",
+            f"Imágenes: {imagenes}",
+            f"Ollama: {ollama}",
+            uso.linea_estado(ctx.estado, ctx.boveda.ahora().date()),
         ]
-        await decir(m.bot, m.chat.id, "\n".join(lineas))
+        problemas = ([f"OpenClaw {openclaw}"] if openclaw != "responde" and ctx.openclaw else []) \
+            + ([f"la voz está {voz}"] if ctx.voz and not voz.startswith("listo") else []) + problemas_img
+        hablado = (f"El servidor {a.servidor_nombre} está activo. "
+                   + ("Todo responde. " if not problemas else "Ojo: " + "; ".join(problemas) + ". ")
+                   + uso.hablado_hoy(ctx.estado, ctx.boveda.ahora().date()))
+        await decir(m.bot, m.chat.id, "\n".join(lineas), voz=hablado)
+
+    def estado_imagenes() -> tuple[str, list[str]]:
+        """("chatgpt: lista", problemas para la voz) según la cadena y el cortacircuitos."""
+        cadena = getattr(ctx.imagenes, "cadena", None)
+        if cadena is None or not cadena.proveedores:
+            return "no configuradas", []
+        partes, problemas = [], []
+        for prov in cadena.proveedores:
+            falta = prov.falta_configurar()
+            pausa = cadena.cortacircuitos.en_pausa(prov.nombre) if cadena.cortacircuitos else None
+            if falta:
+                partes.append(f"{prov.nombre}: {falta}")
+                problemas.append(f"a {prov.nombre} le falta configuración")
+            elif pausa:
+                partes.append(f"{prov.nombre}: {pausa[:140]}")
+                problemas.append(f"las imágenes con {prov.nombre} están {pausa.split(' tras ')[0]}")
+            else:
+                partes.append(f"{prov.nombre}: lista")
+        return "; ".join(partes), problemas
+
+    @r.message(Command("conflictos"))
+    async def conflictos_cmd(m: Message) -> None:
+        await ver_conflictos(m)
+
+    async def ver_conflictos(m: Message) -> None:
+        """Lista los conflictos de Syncthing de la bóveda, cada uno con su sugerencia y sus botones."""
+        lista = [c for c in await asyncio.to_thread(conflictos.buscar, ctx.boveda.raiz)
+                 if not borrar_si_interno(c)]
+        if not lista:
+            await decir(m.bot, m.chat.id, "No hay conflictos de Syncthing en la bóveda.",
+                        voz="No hay conflictos de Syncthing.")
+            return
+        for c in lista[:MAX_CONFLICTOS]:
+            texto, markup, hablado = mensaje_conflicto(ctx, c)
+            if ctx.vigilante is not None:
+                ctx.vigilante.avisada(c)
+            await decir(m.bot, m.chat.id, texto, reply_markup=markup, voz=hablado)
+        if len(lista) > MAX_CONFLICTOS:
+            await decir(m.bot, m.chat.id, f"… y {len(lista) - MAX_CONFLICTOS} más: resuelve estos y vuelve a "
+                                          "pedir /conflictos.")
+
+    def borrar_si_interno(c: conflictos.Conflicto) -> bool:
+        return _borrar_si_interno(ctx, c)
+
+    @r.callback_query(F.data.startswith("cf:"))
+    async def cb_conflicto(c: CallbackQuery) -> None:
+        _, accion, clave = c.data.split(":", 2)
+        p = ctx.tomar_pendiente(clave)
+        conflicto = conflictos.leer_nombre(Path(p["copia"])) if p else None
+        if conflicto is None or not conflicto.copia.resolve().is_relative_to(ctx.boveda.raiz.resolve()):
+            await vencido(c)
+            return
+        if accion == "despues":
+            await cerrar(c, "Lo dejo como está. Cuando quieras, /conflictos lo muestra otra vez.")
+            return
+        try:
+            carpeta = conflictos.resolver(conflicto, accion, ctx.ajustes.datos / "conflictos", ctx.boveda.ahora())
+        except (OSError, ValueError) as e:
+            log.exception("No se pudo resolver un conflicto de Syncthing")
+            await cerrar(c, f"No pude resolverlo: {e}")
+            return
+        rel = ctx.relativa(conflicto.original)
+        if carpeta is None:
+            await cerrar(c, f"La copia de {rel} ya no existe: se resolvió en otro equipo.")
+            return
+        hecho = {"unir": f"uní las dos versiones en {rel}", "actual": f"borré la copia; queda la versión actual de {rel}",
+                 "copia": f"la copia pasó a ser {rel}"}[accion]
+        ctx.boveda.registrar_diario(f"Conflicto de Syncthing resuelto en [[{ctx.boveda.enlace(conflicto.original)}|"
+                                    f"{conflicto.original.stem}]] ({NOMBRES_CONFLICTO[accion].lower()})")
+        log.info("Conflicto de Syncthing resuelto: %s", accion)
+        await cerrar(c, f"Listo: {hecho}. Las dos versiones anteriores quedaron respaldadas en "
+                        f"datos/conflictos/{carpeta.name}/.")
+
+    @r.message(Command("tokens"))
+    async def tokens_cmd(m: Message) -> None:
+        await tokens(m)
+
+    async def tokens(m: Message) -> None:
+        hoy = ctx.boveda.ahora().date()
+        await decir(m.bot, m.chat.id, uso.texto_tokens(ctx.estado, hoy), voz=uso.hablado_tokens(ctx.estado, hoy))
 
     @r.message(Command("proyecto"))
     async def proyecto_cmd(m: Message, command: CommandObject) -> None:
@@ -687,6 +784,10 @@ def crear_router(ctx: Contexto) -> Router:
             await decir(bot, chat, f"La imagen se generó, pero no pude guardarla en la bóveda: {e}")
             return
         ctx.recordar(chat, accion="imagen", imagen=r_img.nota.stem, prompt=r_img.prompt)
+        try:   # sin tokens (el gateway no los informa): cuenta para /tokens y /estado
+            ctx.estado.sumar_uso(ctx.boveda.ahora().date().isoformat(), "imagen", r_img.modelo or r_img.proveedor)
+        except Exception:  # noqa: BLE001 - contar nunca debe romper la entrega de la imagen
+            log.exception("No se pudo registrar el uso de la imagen")
         ficha = en_ficha(proyecto, idea, nombre, r_img)
         foto = BufferedInputFile(r_img.imagen.read_bytes(), filename=r_img.imagen.name)
         if _hablado.get():
@@ -743,7 +844,7 @@ def crear_router(ctx: Contexto) -> Router:
         tope = int(ctx.config.get("proveedores", {}).get("consulta_notas_tokens") or 0)
         notas_p = consultas.notas_del_proyecto(ctx.boveda, proyecto, pregunta, tope)
         async with escribiendo(bot, chat):
-            respuesta = await consultas.responder(ctx.openclaw, ctx.estado, chat, pregunta, ctx.ajustes.zona,
+            respuesta = await consultas.responder(ctx.openclaw, ctx.estado, chat, pregunta,
                                                   breve=_hablado.get(), notas=notas_p, proyecto=proyecto)
         if respuesta != consultas.SIN_RESPUESTA:   # "anota esa idea" se refiere a esta respuesta
             ctx.recordar(chat, accion="consulta", pregunta=pregunta[:500],
@@ -835,7 +936,6 @@ def crear_router(ctx: Contexto) -> Router:
                         voz=f"{opcion.nombre} no pudo hacer el análisis. Elige en los botones si lo reintento "
                             "o pruebo otro modelo.")
             return
-        ctx.estado.sumar_gasto(ctx.boveda.ahora().date().isoformat(), r_an.modelo)
         try:
             ruta = analisis.guardar(ctx.boveda, prep, r_an, opcion)
             pie = f"\n\nGuardado en {ctx.relativa(ruta)}"
@@ -1017,6 +1117,10 @@ def crear_router(ctx: Contexto) -> Router:
             await decir(bot, m.chat.id, AYUDA, voz="Mira la lista de comandos con barra ayuda.")
         elif comando == "nuevo":
             await nuevo(m)
+        elif comando == "tokens":
+            await tokens(m)
+        elif comando == "conflictos":
+            await ver_conflictos(m)
 
     @r.message(F.text.startswith("/"))
     async def comando_desconocido(m: Message) -> None:
@@ -1422,6 +1526,92 @@ def crear_router(ctx: Contexto) -> Router:
 
 async def _constante(texto: str) -> str:
     return texto
+
+
+# --- conflictos de Syncthing (boveda/conflictos.py) ------------------------------------------
+NOMBRES_CONFLICTO = {"unir": "Unir", "actual": "Quedarme con la actual", "copia": "Usar la copia"}
+MAX_CONFLICTOS = 5
+CONFLICTO_TTL_S = 7 * 24 * 3600   # los botones de un conflicto duran una semana (o hasta reiniciar)
+
+
+def _muestra(lineas: list[str]) -> list[str]:
+    salida = [f"  · {l[:120]}" + ("…" if len(l) > 120 else "") for l in lineas[:conflictos.MAX_LINEAS_MUESTRA]]
+    return salida + (["  · …"] if len(lineas) > conflictos.MAX_LINEAS_MUESTRA else [])
+
+
+def mensaje_conflicto(ctx: Contexto, c: conflictos.Conflicto) -> tuple[str, InlineKeyboardMarkup, str]:
+    """(texto, botones, frase para la voz) de un conflicto, con la opción sugerida primero y marcada."""
+    a = conflictos.analizar(c)
+    rel = ctx.relativa(c.original)
+    nombres = dict(NOMBRES_CONFLICTO, copia="Restaurar la copia") if not c.original.exists() else NOMBRES_CONFLICTO
+    lineas = [f"⚠ Conflicto de Syncthing en {rel}",
+              "Se editó en dos equipos antes de sincronizarse. Syncthing dejó la versión más reciente con su "
+              f"nombre y guardó la otra aparte (equipo {c.equipo}, {c.fecha:%d/%m %H:%M}): {c.copia.name}."]
+    if a.solo_copia:
+        lineas += ["", f"Solo en la copia ({_cuantos(len(a.solo_copia), 'línea')}):"] + _muestra(a.solo_copia)
+    if a.solo_actual:
+        lineas += ["", f"Solo en la actual ({_cuantos(len(a.solo_actual), 'línea')}):"] + _muestra(a.solo_actual)
+    lineas += ["", f"Sugerencia: {nombres[a.sugerencia].lower()}. {a.motivo}"]
+    if a.ambos_cambiaron and "unir" in a.acciones:
+        lineas.append(f"({_cuantos(a.ambos_cambiaron, 'fragmento')} cambió en las dos versiones: al unir quedan "
+                      "ambas variantes, primero la de la copia (más vieja) y debajo la actual; revísalas en "
+                      "Obsidian.)")
+    lineas.append("Antes de tocar nada guardo las dos versiones en datos/conflictos/.")
+    clave = ctx.guardar_pendiente(tipo="conflicto", copia=str(c.copia), ttl=CONFLICTO_TTL_S)
+    orden = [a.sugerencia] + [x for x in a.acciones if x != a.sugerencia]
+    botones = [(("✓ " if x == a.sugerencia else "") + nombres[x], f"cf:{x}:{clave}") for x in orden]
+    botones.append(("Después", f"cf:despues:{clave}"))
+    hablado = (f"Hay un conflicto de Syncthing en {c.original.stem}. {a.motivo} Te sugiero "
+               f"{nombres[a.sugerencia].lower()}; elige en los botones.")
+    return "\n".join(lineas), teclado([botones[i:i + 2] for i in range(0, len(botones), 2)]), hablado
+
+
+def _borrar_si_interno(ctx: Contexto, c: conflictos.Conflicto) -> bool:
+    """La copia del latido la escribe el bot: se borra sin preguntar. True si lo era."""
+    if not c.interno(ctx.boveda.raiz, ctx.boveda.cfg.get("interna", "_hub")):
+        return False
+    c.copia.unlink(missing_ok=True)
+    log.info("Conflicto del latido borrado (lo escribe el bot)")
+    return True
+
+
+async def revisar_conflictos(bot: Bot, ctx: Contexto) -> int:
+    """Una revisión: avisa a los usuarios autorizados de cada conflicto nuevo y estable. Devuelve cuántos."""
+    if ctx.vigilante is None:
+        ctx.vigilante = conflictos.Vigilante(ctx.boveda.raiz)
+    avisados = 0
+    for c in await asyncio.to_thread(ctx.vigilante.revisar):
+        ctx.vigilante.avisada(c)
+        if _borrar_si_interno(ctx, c):
+            continue
+        texto, markup, _ = mensaje_conflicto(ctx, c)
+        for chat in sorted(ctx.ajustes.usuarios):
+            await bot.send_message(chat, texto, reply_markup=markup)
+        log.info("Conflicto de Syncthing avisado (archivo %s)", c.original.suffix or "sin extensión")
+        avisados += 1
+    return avisados
+
+
+async def vigilar_conflictos(bot: Bot, ctx: Contexto, intervalo_s: int) -> None:
+    """Revisa la bóveda cada `intervalo_s` segundos (boveda.revisar_conflictos_s en config.yaml)."""
+    while True:
+        try:
+            await revisar_conflictos(bot, ctx)
+        except Exception:  # noqa: BLE001 - una revisión fallida no debe parar la vigilancia
+            log.exception("Falló la revisión de conflictos de Syncthing")
+        await asyncio.sleep(intervalo_s)
+
+
+def _cuantos(n: int, palabra: str) -> str:
+    return f"{n} {palabra}" + ("" if n == 1 else "s")
+
+
+def _modelo(nivel: Any) -> str:
+    """Nivel("openai/gpt-6-sol", "low") -> "gpt-6-sol (razonamiento bajo)"; "off" -> "(sin razonamiento)"."""
+    nombre = nivel.modelo.split("/")[-1]
+    if nivel.razonamiento == "off":
+        return f"{nombre} (sin razonamiento)"
+    return f"{nombre} (razonamiento {analisis.ESFUERZOS.get(nivel.razonamiento, nivel.razonamiento).lower()})"
 
 
 async def _estado_ollama(url: str, modelo: str) -> str:

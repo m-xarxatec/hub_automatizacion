@@ -221,7 +221,7 @@ async def analizar(cliente: OpenClaw, opcion: Opcion, prep: Preparado, cfg: dict
     a = ajustes(cfg)
     return await cliente.completar_con(opcion.nivel(), prep.contexto, SISTEMA,
                                        int(a.get("max_tokens_salida") or 2500),
-                                       float(a.get("tiempo_max_s") or 300))
+                                       float(a.get("tiempo_max_s") or 300), funcion="analisis")
 
 
 def guardar(boveda: Boveda, prep: Preparado, respuesta: Respuesta, opcion: Opcion) -> Path:
